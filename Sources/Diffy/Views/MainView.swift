@@ -79,7 +79,8 @@ struct MainView: View {
                             group: group,
                             repositoryCount: store.repositories.filter {
                                 $0.groupID == group.id && $0.parentRepositoryID == nil
-                            }.count
+                            }.count,
+                            onRemove: { pendingGroupRemoval = group.id }
                         )
                         .tag(group.id)
                     }
@@ -225,6 +226,7 @@ private struct GroupNavigationRow: View {
     @ObservedObject var store: DiffyStore
     let group: RepositoryGroup
     let repositoryCount: Int
+    let onRemove: () -> Void
 
     var body: some View {
         let totals = store.aggregateVisibleTotals(groupID: group.id)
@@ -257,6 +259,12 @@ private struct GroupNavigationRow: View {
             .accessibilityLabel(group.isHidden ? "Show in menu bar" : "Hide from menu bar")
         }
         .opacity(group.isHidden ? 0.6 : 1)
+        .contextMenu {
+            Button(group.isHidden ? "Show in menu bar" : "Hide from menu bar") {
+                store.setGroupHidden(group.id, isHidden: !group.isHidden)
+            }
+            Button("Remove Group…", role: .destructive, action: onRemove)
+        }
     }
 }
 
@@ -417,6 +425,14 @@ private struct RepositoryManagerRow: View {
             Button("Settings…", action: onSettings)
         }
         .opacity(repository.isHidden ? 0.6 : 1)
+        .contextMenu {
+            Button("Settings…", action: onSettings)
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(repository.path, forType: .string)
+            }
+            Toggle("Count in totals", isOn: $isIncluded)
+        }
     }
 }
 

@@ -6,9 +6,10 @@ struct PopoverContentView: View {
     @ObservedObject var store: DiffyStore
     let groupID: UUID
     let onOpenWindow: () -> Void
+    let onClose: () -> Void
 
     @State private var contentHeight: CGFloat = 0
-    @State private var copiedFileKey: String?
+    @State private var copiedKey: String?
     private let bodyCap: CGFloat = 520
 
     var body: some View {
@@ -20,13 +21,14 @@ struct PopoverContentView: View {
             footer
         }
         .frame(width: 420)
-        .task(id: copiedFileKey) {
-            guard let copiedFileKey else { return }
+        .onExitCommand(perform: onClose)
+        .task(id: copiedKey) {
+            guard let copiedKey else { return }
 
             try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled, self.copiedFileKey == copiedFileKey else { return }
+            guard !Task.isCancelled, self.copiedKey == copiedKey else { return }
             withAnimation(.easeOut(duration: 0.15)) {
-                self.copiedFileKey = nil
+                self.copiedKey = nil
             }
         }
     }
@@ -106,8 +108,10 @@ struct PopoverContentView: View {
                             store: store,
                             repository: repository,
                             groupColors: headerColors,
-                            copiedFileKey: copiedFileKey,
-                            onCopyPath: copyPath
+                            useCardChrome: orderedGroupRepos.count > 1,
+                            copiedKey: copiedKey,
+                            onCopyPath: copyPath,
+                            onCopyCommit: copyCommit
                         )
                             .padding(.leading, repository.parentRepositoryID == nil ? 0 : 16)
                     }
@@ -150,10 +154,18 @@ struct PopoverContentView: View {
 
     private func copyPath(_ relativePath: String, in repository: RepositoryConfig) {
         let path = URL(fileURLWithPath: repository.path).appendingPathComponent(relativePath).path
+        copyToPasteboard(path, key: "file:\(repository.id.uuidString):\(relativePath)")
+    }
+
+    private func copyCommit(_ text: String, sha: String) {
+        copyToPasteboard(text, key: "commit:\(sha)")
+    }
+
+    private func copyToPasteboard(_ text: String, key: String) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(path, forType: .string)
+        NSPasteboard.general.setString(text, forType: .string)
         withAnimation(.easeOut(duration: 0.15)) {
-            copiedFileKey = "\(repository.id.uuidString):\(relativePath)"
+            copiedKey = key
         }
     }
 }
@@ -162,14 +174,20 @@ private struct RepoBlock: View {
     @ObservedObject var store: DiffyStore
     let repository: RepositoryConfig
     let groupColors: DiffColors
-    let copiedFileKey: String?
+    let useCardChrome: Bool
+    let copiedKey: String?
     let onCopyPath: (String, RepositoryConfig) -> Void
+    let onCopyCommit: (String, String) -> Void
 
     @State private var isHistoryExpanded = false
     @State private var expandedCommitSHA: String?
 
     private var summary: RepoDiffSummary? {
         store.summaries[repository.id]
+    }
+
+    private func fileCopiedKey(for path: String) -> String {
+        "file:\(repository.id.uuidString):\(path)"
     }
 
     var body: some View {
@@ -219,10 +237,12 @@ private struct RepoBlock: View {
             recentCommitsSection
         }
         .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.primary.opacity(0.045))
-        )
+        .background {
+            if useCardChrome {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.primary.opacity(0.045))
+            }
+        }
     }
 
     @ViewBuilder
@@ -246,7 +266,7 @@ private struct RepoBlock: View {
                                 CompactFileRow(
                                     file: file,
                                     diffColors: groupColors,
-                                    showsCopied: copiedFileKey == "\(repository.id.uuidString):\(file.path)"
+                                    showsCopied: copiedKey == fileCopiedKey(for: file.path)
                                 )
                             }
                             .buttonStyle(.plain)
@@ -334,17 +354,25 @@ private struct RepoBlock: View {
     }
 
     private func commitRow(_ commit: RecentCommitSummary) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            CommitRow(commit: commit, isExpanded: expandedCommitSHA == commit.sha) {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    if expandedCommitSHA == commit.sha {
-                        expandedCommitSHA = nil
-                    } else {
-                        expandedCommitSHA = commit.sha
-                        store.loadCommitDetails(repositoryID: repository.id, sha: commit.sha)
+        let commitCopiedKey = "commit:\(commit.sha)"
+        return VStack(alignment: .leading, spacing: 2) {
+            CommitRow(
+                commit: commit,
+                isExpanded: expandedCommitSHA == commit.sha,
+                showsCopied: copiedKey == commitCopiedKey,
+                onToggle: {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        if expandedCommitSHA == commit.sha {
+                            expandedCommitSHA = nil
+                        } else {
+                            expandedCommitSHA = commit.sha
+                            store.loadCommitDetails(repositoryID: repository.id, sha: commit.sha)
+                        }
                     }
-                }
-            }
+                },
+                onCopySHA: { onCopyCommit(commit.sha, commit.sha) },
+                onCopySubject: { onCopyCommit(commit.subject, commit.sha) }
+            )
 
             if expandedCommitSHA == commit.sha {
                 commitDetails(for: commit.sha)
@@ -375,7 +403,7 @@ private struct RepoBlock: View {
                     ForEach(details.files) { file in
                         HistoricalFileRow(
                             file: file,
-                            showsCopied: copiedFileKey == "\(repository.id.uuidString):\(file.path)"
+                            showsCopied: copiedKey == fileCopiedKey(for: file.path)
                         )
                             .contextMenu {
                                 Button("Copy Full Path") {
@@ -396,7 +424,10 @@ private struct RepoBlock: View {
 private struct CommitRow: View {
     let commit: RecentCommitSummary
     let isExpanded: Bool
+    let showsCopied: Bool
     let onToggle: () -> Void
+    let onCopySHA: () -> Void
+    let onCopySubject: () -> Void
 
     @State private var isHovering = false
 
@@ -415,9 +446,16 @@ private struct CommitRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 4)
-                Text(commit.committedAt, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                if showsCopied {
+                    Label("Copied", systemImage: "checkmark")
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+                        .transition(.opacity)
+                } else {
+                    Text(commit.committedAt, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
                 publicationLabel(commit.publicationStatus)
             }
             .padding(.vertical, 2)
@@ -430,6 +468,10 @@ private struct CommitRow: View {
         )
         .onHover { isHovering = $0 }
         .animation(.easeOut(duration: 0.15), value: isHovering)
+        .contextMenu {
+            Button("Copy SHA", action: onCopySHA)
+            Button("Copy Subject", action: onCopySubject)
+        }
     }
 
     private func publicationLabel(_ status: CommitPublicationStatus) -> some View {

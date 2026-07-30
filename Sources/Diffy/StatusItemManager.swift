@@ -123,6 +123,9 @@ final class StatusItemManager: NSObject {
                 onOpenWindow: { [weak self, weak popover] in
                     popover?.performClose(nil)
                     self?.onOpenWindow()
+                },
+                onClose: { [weak popover] in
+                    popover?.performClose(nil)
                 }
             )
         )
