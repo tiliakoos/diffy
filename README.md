@@ -10,9 +10,9 @@ Diffy is local-only. It does not use GitHub, GitLab, Bitbucket, PRs, issues, clo
 
 ## Status
 
-v0.8.0 — available via Homebrew Cask. The app uses macOS 26 Liquid Glass APIs and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
+v0.8.1 — available via Homebrew Cask. The app uses macOS 26 Liquid Glass APIs and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
 
-This release brings real, adjustable Liquid Glass: the main window is translucent to the desktop behind it, popover repo cards are glass, and Settings gains an Appearance section with a Frosted/Clear style picker and an opacity slider.
+This patch prevents stale refresh results, surfaces persistence failures, keeps error-count tooltips current, and tightens repository, group, and worktree interactions.
 
 Diffy remains focused on its original local-only, menu-bar-first scope.
 
