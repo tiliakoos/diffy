@@ -19,11 +19,11 @@ Diffy remains focused on its original local-only, menu-bar-first scope.
 ## Features
 
 - **Groups**: every repo belongs to a group, and each group owns one menu-bar icon, one color scheme, and an optional small label (1–2 chars or an emoji, positioned around the `+/-` counts). When adding a repo, choose an existing group or create a new one. A group with N repos shows the aggregate `+x / -y` of its (non-hidden) members.
-- **Manage Diffy**: the occasional configuration window has a simple group navigator (drag-to-reorder, live `+/-`) and an inspector for group names, colours, labels, menu-bar visibility, and repositories. Per-repository settings open in a sheet (group assignment, editor choice, commit history limit, total inclusion, safe removal). App settings (Launch at Login, updates, version) live in Settings (Cmd+,).
-- **Hide a group from the menu bar** from its inspector — the icon disappears entirely until toggled back on. Per-repo "Count toward group totals" is also available for silencing a noisy repo within a multi-repo group without removing the icon.
-- Left-click any group's menu-bar icon opens a popover listing **that group's** repos with their staged and unstaged files — click a file to jump straight into your editor, or right-click it to copy its full path. "See all groups" opens the full main window.
-- Expand **Recent commits** under any repository to see its last 1–20 commits (configured per repository), including short SHA, subject, time, and whether each commit is on the configured upstream, local only, or has no upstream. Expanding a commit shows file statuses and `+/-` totals without source-code hunks. Historical rows never open automatically; their context menu can copy the path or explicitly open the current working-tree version when it exists.
-- Window close hides Diffy back to the menu bar (no quit); ⌘Q or right-click → Quit to actually exit.
+- **Manage Diffy**: the occasional configuration window has a simple group navigator (drag-to-reorder, live `+/-`, context menu for show/hide and remove) and an inspector for group names, colours, labels, menu-bar visibility, and repositories. Per-repository settings open in a sheet (group assignment, editor choice, commit history limit, total inclusion, safe removal); repo rows also have a context menu for settings, copy path, and count toggle. App settings (Launch at Login, updates, version) live in Settings (Cmd+,).
+- **Hide a group from the menu bar** from its inspector or sidebar context menu — the icon disappears entirely until toggled back on. Per-repo "Count toward group totals" is also available for silencing a noisy repo within a multi-repo group without removing the icon.
+- Left-click any group's menu-bar icon opens a popover listing **that group's** repos as card-separated blocks with capsule upstream-status badges — click a file to jump straight into your editor, or right-click it to copy its full path. Clean repos show a "Working tree clean" state. Esc closes the popover. "See all groups" opens the full main window.
+- Expand **Recent commits** under any repository to see its last 1–20 commits (configured per repository), including short SHA, subject, time, and whether each commit is on the configured upstream, local only, or has no upstream. Expanding a commit shows file statuses and `+/-` totals without source-code hunks. Commit rows support Copy SHA and Copy Subject via context menu; historical file rows can copy the path or explicitly open the current working-tree version when it exists.
+- Window close hides Diffy back to the menu bar (no quit); ⌘Q or right-click the menu-bar icon → Quit to actually exit. The status-item context menu also has Open Diffy, Settings…, and Quit.
 - **Branch labels** appear in the popover and the repository manager. Detached HEAD shows the short SHA in italics.
 - **Linked worktrees** discovered automatically from `git worktree list --porcelain` and shown as indented sub-rows under one family owner, each with their own diff stats and branch. Manually-added worktrees stay as top-level rows and are never duplicated under a sibling; the first manual row in a family owns only unadded siblings. Per-worktree "Count toward group totals" works like any other repo. Remove a finished auto-managed worktree from inside Diffy via a confirmation dialog — Diffy never uses `--force`, so dirty worktrees must be handled in your terminal first.
 - Open changed files in a configured editor (Xcode, Cursor, VS Code, Zed, or a custom shell command). Deleted-file rows are shown for context but are not opened from the working tree.
@@ -69,7 +69,7 @@ The zip is created at `dist/release/Diffy-<version>.zip`.
 The easiest path is Homebrew:
 
 ```bash
-brew tap nick701/diffy
+brew tap tiliakoos/diffy
 brew install --cask diffy
 xattr -dr com.apple.quarantine /Applications/Diffy.app
 ```
