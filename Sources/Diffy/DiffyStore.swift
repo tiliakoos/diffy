@@ -515,6 +515,19 @@ final class DiffyStore: ObservableObject {
         return result
     }
 
+    /// Sums added/removed lines across a group's non-hidden repositories.
+    func aggregateVisibleTotals(groupID: UUID) -> (added: Int, removed: Int) {
+        var added = 0
+        var removed = 0
+        for repository in repositories where repository.groupID == groupID && !repository.isHidden {
+            if let summary = summaries[repository.id] {
+                added += summary.addedLines
+                removed += summary.removedLines
+            }
+        }
+        return (added, removed)
+    }
+
     func clearWorktreeRemovalError() {
         lastWorktreeRemovalError = nil
     }

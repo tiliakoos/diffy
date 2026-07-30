@@ -4,8 +4,8 @@ import SwiftUI
 
 struct MainView: View {
     @ObservedObject var store: DiffyStore
-    @ObservedObject var launchAtLoginController: LaunchAtLoginController
-    let updaterController: UpdaterController
+
+    @Environment(\.openSettings) private var openSettings
 
     @State private var selectedGroupID: UUID?
     @State private var pendingGroupRemoval: UUID?
@@ -13,39 +13,26 @@ struct MainView: View {
     @State private var selectedRepositoryID: UUID?
 
     var body: some View {
-        ZStack {
-            NavigationSplitView {
-                sidebar
-            } detail: {
-                detail
-            }
-
+        NavigationSplitView {
+            sidebar
+        } detail: {
+            detail
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            selectFirstGroupIfNeeded()
+        }
+        .onChange(of: store.groups) { _, _ in
+            selectFirstGroupIfNeeded()
+        }
+        .sheet(isPresented: repositorySettingsPresented) {
             if let id = selectedRepositoryID {
-                Color.black.opacity(0.18)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        selectedRepositoryID = nil
-                    }
-
                 RepositorySettingsView(
                     store: store,
                     repositoryID: id,
                     onClose: { selectedRepositoryID = nil }
                 )
-                .background(.regularMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .shadow(color: .black.opacity(0.2), radius: 20, y: 8)
-                .contentShape(Rectangle())
-                .onTapGesture {}
             }
-        }
-        .navigationSplitViewStyle(.balanced)
-        .onAppear {
-            selectFirstGroupIfNeeded()
-            launchAtLoginController.refresh()
-        }
-        .onChange(of: store.groups) { _, _ in
-            selectFirstGroupIfNeeded()
         }
         .sheet(isPresented: repositoryDestinationPresented) {
             if let path = pendingRepositoryPath {
@@ -96,6 +83,11 @@ struct MainView: View {
                         )
                         .tag(group.id)
                     }
+                    .onMove { offsets, destination in
+                        var ids = store.groups.map(\.id)
+                        ids.move(fromOffsets: offsets, toOffset: destination)
+                        store.reorderGroups(ids)
+                    }
                 }
             }
             .listStyle(.sidebar)
@@ -108,6 +100,7 @@ struct MainView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.borderless)
+                .keyboardShortcut("o", modifiers: .command)
 
                 Button {
                     let group = store.addGroup()
@@ -117,51 +110,36 @@ struct MainView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.borderless)
+                .keyboardShortcut("n", modifiers: .command)
+
+                Button {
+                    openSettings()
+                } label: {
+                    Label("Settings…", systemImage: "gear")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderless)
 
                 if let addError = store.lastAddError {
-                    Text(addError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(addError)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    .font(.caption)
                 }
 
                 if let loadError = store.lastLoadError {
-                    Text(loadError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(3)
-                }
-
-                Divider()
-
-                Text("App")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                Toggle("Launch at Login", isOn: launchAtLoginBinding)
-                    .toggleStyle(.switch)
-
-                if let error = launchAtLoginController.lastError {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
-                }
-
-                HStack {
-                    Button("Check for Updates…") {
-                        updaterController.checkForUpdates()
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(loadError)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
                     }
-                    .disabled(!updaterController.canCheckForUpdates)
-                    .help(
-                        updaterController.canCheckForUpdates
-                            ? "Check for updates"
-                            : "Updates are unavailable in this build."
-                    )
-                    Spacer()
-                    Text(Self.versionString)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .font(.caption)
                 }
             }
             .padding(12)
@@ -221,11 +199,11 @@ struct MainView: View {
         }
     }
 
-    private var launchAtLoginBinding: Binding<Bool> {
+    private var repositorySettingsPresented: Binding<Bool> {
         Binding {
-            launchAtLoginController.isEnabled
+            selectedRepositoryID != nil
         } set: { newValue in
-            launchAtLoginController.setEnabled(newValue)
+            if !newValue { selectedRepositoryID = nil }
         }
     }
 
@@ -241,13 +219,6 @@ struct MainView: View {
             selectedGroupID = store.groups.first?.id
         }
     }
-
-    private static let versionString: String = {
-        let info = Bundle.main.infoDictionary ?? [:]
-        let version = info["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info["CFBundleVersion"] as? String ?? "?"
-        return "v\(version) (\(build))"
-    }()
 }
 
 private struct GroupNavigationRow: View {
@@ -256,11 +227,8 @@ private struct GroupNavigationRow: View {
     let repositoryCount: Int
 
     var body: some View {
+        let totals = store.aggregateVisibleTotals(groupID: group.id)
         HStack(spacing: 8) {
-            Circle()
-                .fill(AppColor.swiftUIColor(hex: group.diffColors.additionHex))
-                .frame(width: 10, height: 10)
-
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.name.isEmpty ? "Unnamed group" : group.name)
                 Text("\(repositoryCount) \(repositoryCount == 1 ? "repository" : "repositories")")
@@ -269,6 +237,14 @@ private struct GroupNavigationRow: View {
             }
 
             Spacer()
+
+            HStack(spacing: 3) {
+                Text("+\(totals.added)")
+                    .foregroundStyle(AppColor.swiftUIColor(hex: group.diffColors.additionHex))
+                Text("-\(totals.removed)")
+                    .foregroundStyle(AppColor.swiftUIColor(hex: group.diffColors.removalHex))
+            }
+            .font(.system(.caption, design: .monospaced))
 
             Button {
                 store.setGroupHidden(group.id, isHidden: !group.isHidden)
@@ -306,19 +282,60 @@ private struct GroupInspectorView: View {
 
     var body: some View {
         if let group {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text(group.name.isEmpty ? "New Group" : group.name)
-                        .font(.title2.weight(.semibold))
+            Form {
+                Section("Group") {
+                    TextField("Name", text: $nameDraft)
+                        .focused($isNameFocused)
+                        .onSubmit(commitName)
 
-                    groupSettings(group)
+                    Toggle("Show in menu bar", isOn: visibilityBinding(for: group))
+                        .toggleStyle(.switch)
 
-                    Divider()
+                    LabeledContent("Appearance") {
+                        HStack(spacing: 10) {
+                            Button("Colors…") {
+                                showingColorEditor.toggle()
+                            }
+                            .popover(isPresented: $showingColorEditor) {
+                                GroupColorEditor(store: store, groupID: groupID)
+                                    .padding(12)
+                            }
 
-                    repositoryList
+                            Button("Menu Bar Label…") {
+                                showingBadgeEditor.toggle()
+                            }
+                            .popover(isPresented: $showingBadgeEditor) {
+                                GroupBadgeLabelEditor(store: store, groupID: groupID)
+                                    .padding(12)
+                                    .frame(width: 320)
+                            }
+                        }
+                    }
+                }
 
-                    Divider()
+                Section {
+                    if repositories.isEmpty {
+                        Text("This group has no repositories yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(repositories) { repository in
+                            RepositoryManagerRow(
+                                repository: repository,
+                                branch: store.summaries[repository.id]?.branch,
+                                isIncluded: inclusionBinding(for: repository),
+                                onSettings: { onRepositorySettings(repository.id) }
+                            )
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Repositories")
+                        Spacer()
+                        Button("Add Repository", action: onAddRepository)
+                    }
+                }
 
+                Section {
                     Button("Remove Group…", role: .destructive) {
                         if repositories.isEmpty {
                             store.removeGroup(groupID, mode: .dissolveIntoStandalone)
@@ -327,8 +344,9 @@ private struct GroupInspectorView: View {
                         }
                     }
                 }
-                .padding(20)
             }
+            .formStyle(.grouped)
+            .navigationTitle(group.name.isEmpty ? "New Group" : group.name)
             .onAppear {
                 nameDraft = group.name
             }
@@ -347,97 +365,6 @@ private struct GroupInspectorView: View {
         }
     }
 
-    private func groupSettings(_ group: RepositoryGroup) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Name")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 96, alignment: .leading)
-                TextField("Group name", text: $nameDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isNameFocused)
-                    .onSubmit(commitName)
-            }
-
-            Toggle("Show in menu bar", isOn: visibilityBinding(for: group))
-                .toggleStyle(.switch)
-
-            HStack(spacing: 10) {
-                Text("Appearance")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 96, alignment: .leading)
-                Button("Colors…") {
-                    showingColorEditor.toggle()
-                }
-                .popover(isPresented: $showingColorEditor) {
-                    GroupColorEditor(store: store, groupID: groupID)
-                        .padding(12)
-                }
-
-                Button("Menu Bar Label…") {
-                    showingBadgeEditor.toggle()
-                }
-                .popover(isPresented: $showingBadgeEditor) {
-                    GroupBadgeLabelEditor(store: store, groupID: groupID)
-                        .padding(12)
-                        .frame(width: 320)
-                }
-            }
-
-            HStack(spacing: 10) {
-                Text("Order")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 96, alignment: .leading)
-                Button("Move Earlier") {
-                    moveGroup(by: -1)
-                }
-                .disabled(groupIndex == 0)
-
-                Button("Move Later") {
-                    moveGroup(by: 1)
-                }
-                .disabled(groupIndex == store.groups.count - 1)
-            }
-        }
-    }
-
-    private var repositoryList: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Repositories")
-                    .font(.headline)
-                Spacer()
-                Button("Add Repository", action: onAddRepository)
-            }
-
-            if repositories.isEmpty {
-                Text("This group has no repositories yet.")
-                    .foregroundStyle(.secondary)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(repositories) { repository in
-                        RepositoryManagerRow(
-                            repository: repository,
-                            branch: store.summaries[repository.id]?.branch,
-                            isIncluded: inclusionBinding(for: repository),
-                            onSettings: { onRepositorySettings(repository.id) }
-                        )
-
-                        if repository.id != repositories.last?.id {
-                            Divider()
-                        }
-                    }
-                }
-                .background(Color.secondary.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-        }
-    }
-
-    private var groupIndex: Int {
-        store.groups.firstIndex { $0.id == groupID } ?? 0
-    }
-
     private func visibilityBinding(for group: RepositoryGroup) -> Binding<Bool> {
         Binding {
             !group.isHidden
@@ -452,14 +379,6 @@ private struct GroupInspectorView: View {
         } set: { isIncluded in
             store.setHidden(repository.id, isHidden: !isIncluded)
         }
-    }
-
-    private func moveGroup(by offset: Int) {
-        let destination = groupIndex + offset
-        guard store.groups.indices.contains(destination) else { return }
-        var ids = store.groups.map(\.id)
-        ids.swapAt(groupIndex, destination)
-        store.reorderGroups(ids)
     }
 
     private func commitName() {
@@ -489,13 +408,14 @@ private struct RepositoryManagerRow: View {
 
             Spacer()
 
-            Toggle("Count", isOn: $isIncluded)
+            Toggle("Count in totals", isOn: $isIncluded)
                 .toggleStyle(.switch)
-                .fixedSize()
+                .labelsHidden()
+                .help("Count in totals — include this repository in the group's menu-bar totals and popover")
+                .accessibilityLabel("Count in totals")
 
             Button("Settings…", action: onSettings)
         }
-        .padding(10)
         .opacity(repository.isHidden ? 0.6 : 1)
     }
 }

@@ -3,11 +3,11 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = DiffyStore()
+    let launchAtLoginController = LaunchAtLoginController()
+    let updaterController = UpdaterController()
 
     private var statusItemManager: StatusItemManager?
     private var mainWindowController: MainWindowController?
-    private var updaterController: UpdaterController?
-    private var launchAtLoginController: LaunchAtLoginController?
 
     private static let hasLaunchedBeforeKey = "DiffyHasLaunchedBefore"
 
@@ -18,13 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         store.load()
 
-        launchAtLoginController = LaunchAtLoginController()
-        updaterController = UpdaterController()
-        mainWindowController = MainWindowController(
-            store: store,
-            launchAtLoginController: launchAtLoginController!,
-            updaterController: updaterController!
-        )
+        mainWindowController = MainWindowController(store: store)
 
         statusItemManager = StatusItemManager(store: store) { [weak self] in
             self?.mainWindowController?.show()

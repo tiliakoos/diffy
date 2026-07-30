@@ -22,80 +22,71 @@ struct RepositorySettingsView: View {
     }
 
     var body: some View {
-        if let repository {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(repository.displayName)
-                                .font(.title3.weight(.semibold))
-                            BranchSubtitle(branch: store.summaries[repository.id]?.branch)
-                            Text(repository.path)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-
-                        Spacer()
-
-                        Button(action: onClose) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title3)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("Close settings")
-                        .accessibilityLabel("Close settings")
+        Group {
+            if let repository {
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(repository.displayName)
+                            .font(.title3.weight(.semibold))
+                        BranchSubtitle(branch: store.summaries[repository.id]?.branch)
+                        Text(repository.path)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
-
-                    Divider()
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+                    .padding(.bottom, 8)
 
                     settings(for: repository)
-                }
-                .padding(20)
-            }
-            .frame(width: 560, height: 390)
-            .confirmationDialog(
-                worktreeRemovalTitle,
-                isPresented: worktreeRemovalDialogPresented,
-                titleVisibility: .visible
-            ) {
-                Button("Remove", role: .destructive) {
-                    if let id = pendingWorktreeRemoval {
-                        store.clearWorktreeRemovalError()
-                        store.removeWorktree(repositoryID: id)
+
+                    HStack {
+                        Spacer()
+                        Button("Done", action: onClose)
+                            .keyboardShortcut(.defaultAction)
                     }
-                    pendingWorktreeRemoval = nil
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
                 }
-                Button("Cancel", role: .cancel) {
-                    pendingWorktreeRemoval = nil
+                .confirmationDialog(
+                    worktreeRemovalTitle,
+                    isPresented: worktreeRemovalDialogPresented,
+                    titleVisibility: .visible
+                ) {
+                    Button("Remove", role: .destructive) {
+                        if let id = pendingWorktreeRemoval {
+                            store.clearWorktreeRemovalError()
+                            store.removeWorktree(repositoryID: id)
+                        }
+                        pendingWorktreeRemoval = nil
+                    }
+                    Button("Cancel", role: .cancel) {
+                        pendingWorktreeRemoval = nil
+                    }
+                } message: {
+                    Text(worktreeRemovalMessage)
                 }
-            } message: {
-                Text(worktreeRemovalMessage)
-            }
-            .onAppear {
-                store.clearWorktreeRemovalError()
-                if case .command(let command) = repository.editor {
-                    customCommand = command
+                .onAppear {
+                    store.clearWorktreeRemovalError()
+                    if case .command(let command) = repository.editor {
+                        customCommand = command
+                    }
                 }
+                .onDisappear {
+                    commitCustomCommand(for: repository)
+                }
+            } else {
+                ContentUnavailableView("Repository unavailable", systemImage: "questionmark.folder")
             }
-            .onDisappear {
-                commitCustomCommand(for: repository)
-            }
-        } else {
-            ContentUnavailableView("Repository unavailable", systemImage: "questionmark.folder")
-                .frame(width: 400, height: 240)
         }
+        .frame(width: 560, height: 460)
     }
 
     private func settings(for repository: RepositoryConfig) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Open in")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 96, alignment: .leading)
-                Picker("", selection: editorBinding(for: repository)) {
+        Form {
+            Section {
+                Picker("Open in", selection: editorBinding(for: repository)) {
                     ForEach(EditorChoice.allCases, id: \.self) { choice in
                         HStack(spacing: 6) {
                             Image(nsImage: choice.icon)
@@ -106,12 +97,9 @@ struct RepositorySettingsView: View {
                         .tag(choice)
                     }
                 }
-                .labelsHidden()
-                .frame(width: 200)
 
                 if editorChoice(for: repository) == .custom {
-                    TextField("open {path}", text: $customCommand)
-                        .textFieldStyle(.roundedBorder)
+                    TextField("Command", text: $customCommand, prompt: Text("open {path}"))
                         .focused($isCustomCommandFocused)
                         .onSubmit {
                             commitCustomCommand(for: repository)
@@ -122,73 +110,74 @@ struct RepositorySettingsView: View {
                             }
                         }
                 }
+            } footer: {
+                if editorChoice(for: repository) == .custom {
+                    Text("Supports {path} and {repo} placeholders.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
 
-            if editorChoice(for: repository) == .custom {
-                Text("Supports {path} and {repo} placeholders.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+            Section {
+                if !repository.isAutoManaged {
+                    LabeledContent("Group") {
+                        HStack(spacing: 12) {
+                            Picker("", selection: groupBinding(for: repository)) {
+                                ForEach(store.groups) { group in
+                                    Text(group.name.isEmpty ? "Unnamed group" : group.name).tag(group.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 220)
 
-            if !repository.isAutoManaged {
-                HStack(spacing: 12) {
-                    Text("Group")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 96, alignment: .leading)
-                    Picker("", selection: groupBinding(for: repository)) {
-                        ForEach(store.groups) { group in
-                            Text(group.name.isEmpty ? "Unnamed group" : group.name).tag(group.id)
+                            Button("Move to New Group") {
+                                let group = store.addGroup(name: repository.displayName)
+                                store.moveRepository(repository.id, toGroup: group.id)
+                            }
                         }
                     }
-                    .labelsHidden()
-                    .frame(width: 220)
-
-                    Button("Move to New Group") {
-                        let group = store.addGroup(name: repository.displayName)
-                        store.moveRepository(repository.id, toGroup: group.id)
-                    }
                 }
+
+                LabeledContent("Recent commits") {
+                    Stepper(
+                        value: recentCommitLimitBinding(for: repository),
+                        in: RepositoryConfig.recentCommitLimitRange
+                    ) {
+                        Text("\(repository.recentCommitLimit)")
+                            .monospacedDigit()
+                            .frame(width: 24, alignment: .trailing)
+                    }
+                    .fixedSize()
+                }
+
+                Toggle("Count toward group totals", isOn: inclusionBinding(for: repository))
+                    .toggleStyle(.switch)
             }
 
-            HStack(spacing: 12) {
-                Text("Recent commits")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 96, alignment: .leading)
-                Stepper(
-                    value: recentCommitLimitBinding(for: repository),
-                    in: RepositoryConfig.recentCommitLimitRange
-                ) {
-                    Text("\(repository.recentCommitLimit)")
-                        .monospacedDigit()
-                        .frame(width: 24, alignment: .trailing)
-                }
-                .fixedSize()
-            }
-
-            Toggle("Count toward group totals", isOn: inclusionBinding(for: repository))
-                .toggleStyle(.switch)
-
-            if repository.isAutoManaged {
-                worktreeRemovalControls(for: repository)
-            } else {
-                Button("Remove Repository", role: .destructive) {
-                    showingRemoveConfirmation = true
-                }
-                .confirmationDialog(
-                    "Remove \"\(repository.displayName)\"?",
-                    isPresented: $showingRemoveConfirmation,
-                    titleVisibility: .visible
-                ) {
-                    Button("Remove", role: .destructive) {
-                        store.removeRepository(repository)
-                        onClose()
+            Section {
+                if repository.isAutoManaged {
+                    worktreeRemovalControls(for: repository)
+                } else {
+                    Button("Remove Repository", role: .destructive) {
+                        showingRemoveConfirmation = true
                     }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("This removes the repository from Diffy. Its files on disk are not affected.")
+                    .confirmationDialog(
+                        "Remove \"\(repository.displayName)\"?",
+                        isPresented: $showingRemoveConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Remove", role: .destructive) {
+                            store.removeRepository(repository)
+                            onClose()
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This removes the repository from Diffy. Its files on disk are not affected.")
+                    }
                 }
             }
         }
+        .formStyle(.grouped)
     }
 
     private var worktreeRemovalTitle: String { "Remove worktree?" }
@@ -234,9 +223,13 @@ struct RepositorySettingsView: View {
             }
 
             if let error = store.lastWorktreeRemovalError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(error)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
             }
         }
     }

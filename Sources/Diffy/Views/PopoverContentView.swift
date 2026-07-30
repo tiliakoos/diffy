@@ -8,7 +8,7 @@ struct PopoverContentView: View {
     let onOpenWindow: () -> Void
 
     @State private var contentHeight: CGFloat = 0
-    @State private var copyConfirmationID: UUID?
+    @State private var copiedFileKey: String?
     private let bodyCap: CGFloat = 520
 
     var body: some View {
@@ -20,12 +20,14 @@ struct PopoverContentView: View {
             footer
         }
         .frame(width: 420)
-        .task(id: copyConfirmationID) {
-            guard let copyConfirmationID else { return }
+        .task(id: copiedFileKey) {
+            guard let copiedFileKey else { return }
 
             try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled, self.copyConfirmationID == copyConfirmationID else { return }
-            self.copyConfirmationID = nil
+            guard !Task.isCancelled, self.copiedFileKey == copiedFileKey else { return }
+            withAnimation(.easeOut(duration: 0.15)) {
+                self.copiedFileKey = nil
+            }
         }
     }
 
@@ -98,18 +100,19 @@ struct PopoverContentView: View {
             .padding(14)
         } else {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 10) {
                     ForEach(orderedGroupRepos) { repository in
                         RepoBlock(
                             store: store,
                             repository: repository,
                             groupColors: headerColors,
+                            copiedFileKey: copiedFileKey,
                             onCopyPath: copyPath
                         )
                             .padding(.leading, repository.parentRepositoryID == nil ? 0 : 16)
                     }
                 }
-                .padding(14)
+                .padding(12)
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.height
                 } action: { newHeight in
@@ -132,13 +135,6 @@ struct PopoverContentView: View {
 
             Spacer()
 
-            if copyConfirmationID != nil {
-                Text("Path copied")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-
             Button("See all groups") {
                 onOpenWindow()
             }
@@ -149,22 +145,16 @@ struct PopoverContentView: View {
     }
 
     private var aggregateTotals: (added: Int, removed: Int) {
-        var added = 0
-        var removed = 0
-        for repository in groupRepos {
-            if let summary = store.summaries[repository.id] {
-                added += summary.addedLines
-                removed += summary.removedLines
-            }
-        }
-        return (added, removed)
+        store.aggregateVisibleTotals(groupID: groupID)
     }
 
     private func copyPath(_ relativePath: String, in repository: RepositoryConfig) {
         let path = URL(fileURLWithPath: repository.path).appendingPathComponent(relativePath).path
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(path, forType: .string)
-        copyConfirmationID = UUID()
+        withAnimation(.easeOut(duration: 0.15)) {
+            copiedFileKey = "\(repository.id.uuidString):\(relativePath)"
+        }
     }
 }
 
@@ -172,6 +162,7 @@ private struct RepoBlock: View {
     @ObservedObject var store: DiffyStore
     let repository: RepositoryConfig
     let groupColors: DiffColors
+    let copiedFileKey: String?
     let onCopyPath: (String, RepositoryConfig) -> Void
 
     @State private var isHistoryExpanded = false
@@ -204,21 +195,34 @@ private struct RepoBlock: View {
 
             if let summary {
                 if let error = summary.errorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(error)
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
                 }
                 section(title: "Staged", files: summary.stagedFiles)
                 section(title: "Unstaged", files: summary.unstagedFiles)
                 if summary.stagedFiles.isEmpty && summary.unstagedFiles.isEmpty && summary.errorMessage == nil {
-                    Text("No local changes")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle")
+                            .foregroundStyle(.green)
+                        Text("Working tree clean")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
                 }
             }
 
             recentCommitsSection
         }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.045))
+        )
     }
 
     @ViewBuilder
@@ -227,7 +231,7 @@ private struct RepoBlock: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(title)
-                        .font(.caption2)
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                     Rectangle()
                         .fill(Color.secondary.opacity(0.25))
@@ -239,7 +243,11 @@ private struct RepoBlock: View {
                             Button {
                                 EditorLauncher.open(file: file, in: repository)
                             } label: {
-                                CompactFileRow(file: file, diffColors: groupColors)
+                                CompactFileRow(
+                                    file: file,
+                                    diffColors: groupColors,
+                                    showsCopied: copiedFileKey == "\(repository.id.uuidString):\(file.path)"
+                                )
                             }
                             .buttonStyle(.plain)
                             .disabled(!file.isOpenableFromWorkingTree)
@@ -264,18 +272,21 @@ private struct RepoBlock: View {
     private var recentCommitsSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Button {
-                isHistoryExpanded.toggle()
-                if isHistoryExpanded {
-                    store.loadRecentCommits(repositoryID: repository.id)
-                } else {
-                    expandedCommitSHA = nil
+                withAnimation(.easeOut(duration: 0.18)) {
+                    isHistoryExpanded.toggle()
+                    if isHistoryExpanded {
+                        store.loadRecentCommits(repositoryID: repository.id)
+                    } else {
+                        expandedCommitSHA = nil
+                    }
                 }
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: isHistoryExpanded ? "chevron.down" : "chevron.right")
+                    Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
-                    Text("Recent commits (\(repository.recentCommitLimit))")
-                        .font(.caption2)
+                        .rotationEffect(.degrees(isHistoryExpanded ? 90 : 0))
+                    Text("Recent commits")
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                     Rectangle()
                         .fill(Color.secondary.opacity(0.25))
@@ -286,101 +297,62 @@ private struct RepoBlock: View {
             .buttonStyle(.plain)
 
             if isHistoryExpanded {
-                if history?.isLoading == true && history?.commits.isEmpty == true {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 5)
-                } else if let error = history?.errorMessage, history?.commits.isEmpty == true {
-                    Text(error)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-                } else if history?.commits.isEmpty == true {
-                    Text("No commits yet")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                } else if let commits = history?.commits {
-                    VStack(spacing: 1) {
-                        ForEach(commits) { commit in
-                            commitRow(commit)
-                        }
-                    }
-                    if history?.isLoading == true {
+                Group {
+                    if history?.isLoading == true && history?.commits.isEmpty == true {
                         ProgressView()
-                            .controlSize(.mini)
+                            .controlSize(.small)
                             .frame(maxWidth: .infinity)
-                    } else if let error = history?.errorMessage {
+                            .padding(.vertical, 5)
+                    } else if let error = history?.errorMessage, history?.commits.isEmpty == true {
                         Text(error)
                             .font(.caption2)
                             .foregroundStyle(.red)
+                    } else if history?.commits.isEmpty == true {
+                        Text("No commits yet")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    } else if let commits = history?.commits {
+                        VStack(spacing: 1) {
+                            ForEach(commits) { commit in
+                                commitRow(commit)
+                            }
+                        }
+                        if history?.isLoading == true {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .frame(maxWidth: .infinity)
+                        } else if let error = history?.errorMessage {
+                            Text(error)
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
+                .transition(.opacity)
             }
         }
     }
 
     private func commitRow(_ commit: RecentCommitSummary) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Button {
-                if expandedCommitSHA == commit.sha {
-                    expandedCommitSHA = nil
-                } else {
-                    expandedCommitSHA = commit.sha
-                    store.loadCommitDetails(repositoryID: repository.id, sha: commit.sha)
+            CommitRow(commit: commit, isExpanded: expandedCommitSHA == commit.sha) {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    if expandedCommitSHA == commit.sha {
+                        expandedCommitSHA = nil
+                    } else {
+                        expandedCommitSHA = commit.sha
+                        store.loadCommitDetails(repositoryID: repository.id, sha: commit.sha)
+                    }
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: expandedCommitSHA == commit.sha ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
-                        .frame(width: 8)
-                    Text(commit.shortSHA)
-                        .font(.system(.caption2, design: .monospaced).weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(commit.subject.isEmpty ? "(no message)" : commit.subject)
-                        .font(.caption)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Spacer(minLength: 4)
-                    Text(commit.committedAt, style: .relative)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    publicationLabel(commit.publicationStatus)
-                }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
 
             if expandedCommitSHA == commit.sha {
                 commitDetails(for: commit.sha)
                     .padding(.leading, 14)
+                    .transition(.opacity)
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private func publicationLabel(_ status: CommitPublicationStatus) -> some View {
-        let title: String
-        let color: Color
-        let help: String
-        switch status {
-        case .onUpstream(let upstream):
-            title = "On upstream"
-            color = .green
-            help = "Reachable from \(upstream) according to local remote-tracking refs. Diffy does not fetch."
-        case .localOnly(let upstream):
-            title = "Local only"
-            color = .orange
-            help = "Not reachable from \(upstream) according to local remote-tracking refs. Diffy does not fetch."
-        case .noUpstream:
-            title = "No upstream"
-            color = .secondary
-            help = "This branch has no configured upstream."
-        }
-        return Text(title)
-            .font(.caption2.weight(.medium))
-            .foregroundStyle(color)
-            .lineLimit(1)
-            .help(help)
     }
 
     @ViewBuilder
@@ -401,7 +373,10 @@ private struct RepoBlock: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(details.files) { file in
-                        HistoricalFileRow(file: file)
+                        HistoricalFileRow(
+                            file: file,
+                            showsCopied: copiedFileKey == "\(repository.id.uuidString):\(file.path)"
+                        )
                             .contextMenu {
                                 Button("Copy Full Path") {
                                     onCopyPath(file.path, repository)
@@ -418,8 +393,83 @@ private struct RepoBlock: View {
     }
 }
 
+private struct CommitRow: View {
+    let commit: RecentCommitSummary
+    let isExpanded: Bool
+    let onToggle: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 8)
+                Text(commit.shortSHA)
+                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(commit.subject.isEmpty ? "(no message)" : commit.subject)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                Text(commit.committedAt, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                publicationLabel(commit.publicationStatus)
+            }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 3)
+                .fill(isHovering ? Color.primary.opacity(0.04) : Color.clear)
+        )
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovering)
+    }
+
+    private func publicationLabel(_ status: CommitPublicationStatus) -> some View {
+        let title: String
+        let color: Color
+        let background: Color
+        let help: String
+        switch status {
+        case .onUpstream(let upstream):
+            title = "On upstream"
+            color = .green
+            background = Color.green.opacity(0.15)
+            help = "Reachable from \(upstream) according to local remote-tracking refs. Diffy does not fetch."
+        case .localOnly(let upstream):
+            title = "Local only"
+            color = .orange
+            background = Color.orange.opacity(0.15)
+            help = "Not reachable from \(upstream) according to local remote-tracking refs. Diffy does not fetch."
+        case .noUpstream:
+            title = "No upstream"
+            color = .secondary
+            background = Color.primary.opacity(0.06)
+            help = "This branch has no configured upstream."
+        }
+        return Text(title)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(background))
+            .help(help)
+    }
+}
+
 private struct HistoricalFileRow: View {
     let file: HistoricalChangedFile
+    let showsCopied: Bool
+
+    @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -429,13 +479,18 @@ private struct HistoricalFileRow: View {
                 .frame(width: 14, alignment: .leading)
 
             Text(file.previousPath.map { "\($0) → \(file.path)" } ?? file.path)
-                .font(.system(.caption2, design: .monospaced))
+                .font(.system(.caption, design: .monospaced))
                 .lineLimit(1)
                 .truncationMode(.middle)
 
             Spacer(minLength: 6)
 
-            if file.isBinary {
+            if showsCopied {
+                Label("Copied", systemImage: "checkmark")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+                    .transition(.opacity)
+            } else if file.isBinary {
                 Text("binary")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -446,13 +501,20 @@ private struct HistoricalFileRow: View {
             }
         }
         .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 3)
+                .fill(isHovering ? Color.primary.opacity(0.04) : Color.clear)
+        )
         .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovering)
     }
 }
 
 private struct CompactFileRow: View {
     let file: ChangedFileSummary
     let diffColors: DiffColors
+    let showsCopied: Bool
 
     @State private var isHovering = false
 
@@ -470,7 +532,12 @@ private struct CompactFileRow: View {
 
             Spacer(minLength: 6)
 
-            if file.isBinary {
+            if showsCopied {
+                Label("Copied", systemImage: "checkmark")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+                    .transition(.opacity)
+            } else if file.isBinary {
                 Text("binary")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -495,5 +562,6 @@ private struct CompactFileRow: View {
         )
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovering)
     }
 }

@@ -176,6 +176,8 @@ final class StatusItemManager: NSObject {
         let menu = NSMenu()
         let open = menu.addItem(withTitle: "Open Diffy", action: #selector(menuOpen), keyEquivalent: "")
         open.target = self
+        let settings = menu.addItem(withTitle: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
+        settings.target = self
         menu.addItem(NSMenuItem.separator())
         let quit = menu.addItem(withTitle: "Quit Diffy", action: #selector(menuQuit), keyEquivalent: "q")
         quit.target = self
@@ -186,6 +188,13 @@ final class StatusItemManager: NSObject {
 
     @objc private func menuOpen() {
         onOpenWindow()
+    }
+
+    @objc private func menuSettings() {
+        // The app is usually .accessory here; without activation the Settings
+        // window can open behind other apps. Policy stays owned by MainWindowController.
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     @objc private func menuQuit() {

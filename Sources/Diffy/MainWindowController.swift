@@ -5,13 +5,9 @@ import SwiftUI
 final class MainWindowController: NSObject, NSWindowDelegate {
     private let window: NSWindow
     private let store: DiffyStore
-    private let launchAtLoginController: LaunchAtLoginController
-    private let updaterController: UpdaterController
 
-    init(store: DiffyStore, launchAtLoginController: LaunchAtLoginController, updaterController: UpdaterController) {
+    init(store: DiffyStore) {
         self.store = store
-        self.launchAtLoginController = launchAtLoginController
-        self.updaterController = updaterController
 
         let initialFrame = NSRect(x: 0, y: 0, width: 1080, height: 700)
         window = NSWindow(
@@ -33,12 +29,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.delegate = self
-        let rootView = MainView(
-            store: store,
-            launchAtLoginController: launchAtLoginController,
-            updaterController: updaterController
-        )
-        window.contentViewController = NSHostingController(rootView: rootView)
+        window.contentViewController = NSHostingController(rootView: MainView(store: store))
     }
 
     func show() {
