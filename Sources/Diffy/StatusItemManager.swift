@@ -86,7 +86,7 @@ final class StatusItemManager: NSObject {
                 visibleRepoCount: visibleRepos.count,
                 colors: group.diffColors,
                 badgeLabel: group.badgeLabel,
-                hasError: hasError
+                errorCount: errorCount
             )
 
             if item.lastBadgeState != newState {
@@ -132,7 +132,7 @@ final class StatusItemManager: NSObject {
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
 
-        let handler = StatusItemClickHandler(groupID: group.id) { [weak self] event in
+        let handler = StatusItemClickHandler { [weak self] event in
             self?.handleClick(groupID: group.id, event: event)
         }
 
@@ -251,16 +251,14 @@ struct BadgeState: Equatable {
     let visibleRepoCount: Int
     let colors: DiffColors
     let badgeLabel: BadgeLabel?
-    let hasError: Bool
+    let errorCount: Int
 }
 
 @MainActor
 private final class StatusItemClickHandler: NSObject {
-    let groupID: UUID
     private let onClick: (NSEvent?) -> Void
 
-    init(groupID: UUID, onClick: @escaping (NSEvent?) -> Void) {
-        self.groupID = groupID
+    init(onClick: @escaping (NSEvent?) -> Void) {
         self.onClick = onClick
     }
 

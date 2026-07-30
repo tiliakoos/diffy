@@ -37,10 +37,6 @@ struct PopoverContentView: View {
         store.groups.first { $0.id == groupID }
     }
 
-    private var groupRepos: [RepositoryConfig] {
-        store.repositories.filter { $0.groupID == groupID && !$0.isHidden }
-    }
-
     private var orderedGroupRepos: [RepositoryConfig] {
         store.orderedRepositories(in: groupID, includeHidden: false)
     }
@@ -57,7 +53,7 @@ struct PopoverContentView: View {
     }
 
     private var header: some View {
-        let totals = aggregateTotals
+        let totals = store.aggregateVisibleTotals(groupID: groupID)
         return HStack(alignment: .firstTextBaseline) {
             Text(headerTitle)
                 .font(.headline)
@@ -90,7 +86,7 @@ struct PopoverContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(14)
-        } else if groupRepos.isEmpty {
+        } else if orderedGroupRepos.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text("No visible repositories")
                     .font(.subheadline.weight(.semibold))
@@ -111,7 +107,7 @@ struct PopoverContentView: View {
                             useCardChrome: orderedGroupRepos.count > 1,
                             copiedKey: copiedKey,
                             onCopyPath: copyPath,
-                            onCopyCommit: copyCommit
+                            onCopyCommit: copyToPasteboard
                         )
                             .padding(.leading, repository.parentRepositoryID == nil ? 0 : 16)
                     }
@@ -130,7 +126,9 @@ struct PopoverContentView: View {
     private var footer: some View {
         HStack {
             Button {
-                RepositoryPicker.addRepository(to: store)
+                RepositoryPicker.chooseRepository { url in
+                    store.addRepository(path: url.path, destination: .newGroup)
+                }
             } label: {
                 Image(systemName: "plus")
             }
@@ -148,17 +146,9 @@ struct PopoverContentView: View {
         .padding(.vertical, 8)
     }
 
-    private var aggregateTotals: (added: Int, removed: Int) {
-        store.aggregateVisibleTotals(groupID: groupID)
-    }
-
     private func copyPath(_ relativePath: String, in repository: RepositoryConfig) {
         let path = URL(fileURLWithPath: repository.path).appendingPathComponent(relativePath).path
         copyToPasteboard(path, key: "file:\(repository.id.uuidString):\(relativePath)")
-    }
-
-    private func copyCommit(_ text: String, sha: String) {
-        copyToPasteboard(text, key: "commit:\(sha)")
     }
 
     private func copyToPasteboard(_ text: String, key: String) {
@@ -353,7 +343,7 @@ private struct RepoBlock: View {
     }
 
     private func commitRow(_ commit: RecentCommitSummary) -> some View {
-        let commitCopiedKey = "commit:\(commit.sha)"
+        let commitCopiedKey = "commit:\(repository.id.uuidString):\(commit.sha)"
         return VStack(alignment: .leading, spacing: 2) {
             CommitRow(
                 commit: commit,
@@ -369,8 +359,8 @@ private struct RepoBlock: View {
                         }
                     }
                 },
-                onCopySHA: { onCopyCommit(commit.sha, commit.sha) },
-                onCopySubject: { onCopyCommit(commit.subject, commit.sha) }
+                onCopySHA: { onCopyCommit(commit.sha, commitCopiedKey) },
+                onCopySubject: { onCopyCommit(commit.subject, commitCopiedKey) }
             )
 
             if expandedCommitSHA == commit.sha {

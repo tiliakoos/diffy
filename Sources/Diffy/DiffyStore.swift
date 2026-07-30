@@ -39,29 +39,35 @@ final class DiffyStore: ObservableObject {
     /// Read by the UI via `isGitMainWorktree(repositoryID:)`.
     @Published private(set) var lastWorktreeEntries: [UUID: [WorktreeEntry]] = [:]
     @Published private(set) var lastAddError: String?
-    @Published private(set) var lastLoadError: String?
+    @Published private(set) var lastPersistenceError: String?
     @Published private(set) var lastWorktreeRemovalError: String?
 
-    private let gitClient = GitClient()
+    private let gitClient: GitClient
     private let worktreeMutator = GitWorktreeMutator()
     private var watchers: [UUID: RepositoryWatcher] = [:]
+    private var refreshRequestIDs: [UUID: UUID] = [:]
     private var pollingTask: Task<Void, Never>?
     private let storageURL: URL
 
-    init(storageURL: URL? = nil) {
+    init(storageURL: URL? = nil, gitClient: GitClient = GitClient()) {
         self.storageURL = storageURL ?? Self.defaultStorageURL()
+        self.gitClient = gitClient
     }
 
     func load() {
-        guard let data = try? Data(contentsOf: storageURL) else { return }
-        let state: StoredState
-        do {
-            state = try StoredStateMigration.decode(data)
-        } catch {
-            lastLoadError = "Failed to load saved repositories: \(error.localizedDescription)"
+        guard FileManager.default.fileExists(atPath: storageURL.path) else {
+            lastPersistenceError = nil
             return
         }
-        lastLoadError = nil
+
+        let state: StoredState
+        do {
+            state = try StoredStateMigration.decode(Data(contentsOf: storageURL))
+        } catch {
+            lastPersistenceError = "Failed to load saved repositories: \(error.localizedDescription)"
+            return
+        }
+        lastPersistenceError = nil
         groups = state.groups
         repositories = state.repositories
         if normalizeRepositoryRows() {
@@ -75,8 +81,9 @@ final class DiffyStore: ObservableObject {
             let state = StoredState(groups: groups, repositories: repositories)
             let data = try JSONEncoder().encode(state)
             try data.write(to: storageURL, options: .atomic)
+            lastPersistenceError = nil
         } catch {
-            NSLog("Diffy failed to save repositories: \(error.localizedDescription)")
+            lastPersistenceError = "Failed to save repositories: \(error.localizedDescription)"
         }
     }
 
@@ -88,7 +95,11 @@ final class DiffyStore: ObservableObject {
         refreshAll()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
+                do {
+                    try await Task.sleep(for: .seconds(10))
+                } catch {
+                    break
+                }
                 self?.refreshAll()
             }
         }
@@ -124,6 +135,7 @@ final class DiffyStore: ObservableObject {
     func stop() {
         pollingTask?.cancel()
         pollingTask = nil
+        refreshRequestIDs.removeAll()
         watchers.values.forEach { $0.stop() }
         watchers.removeAll()
     }
@@ -570,6 +582,9 @@ final class DiffyStore: ObservableObject {
     }
 
     private func refresh(_ repository: RepositoryConfig) {
+        let requestID = UUID()
+        refreshRequestIDs[repository.id] = requestID
+
         let isParentRefresh = (repository.parentRepositoryID == nil)
         let parentPath: String
         let parentID: UUID
@@ -611,7 +626,9 @@ final class DiffyStore: ObservableObject {
                 let summary = try gitClient.summarize(repository, branch: branch)
 
                 await MainActor.run {
-                    guard self.repositories.contains(where: { $0.id == repository.id }) else { return }
+                    guard self.refreshRequestIDs[repository.id] == requestID,
+                          self.repositories.contains(where: { $0.id == repository.id })
+                    else { return }
                     if self.summaries[repository.id] != summary {
                         self.summaries[repository.id] = summary
                     }
@@ -625,7 +642,9 @@ final class DiffyStore: ObservableObject {
             } catch {
                 let result = RepoDiffSummary.empty(for: repository).withError(error.localizedDescription)
                 await MainActor.run {
-                    guard self.repositories.contains(where: { $0.id == repository.id }) else { return }
+                    guard self.refreshRequestIDs[repository.id] == requestID,
+                          self.repositories.contains(where: { $0.id == repository.id })
+                    else { return }
                     if self.summaries[repository.id] != result {
                         self.summaries[repository.id] = result
                     }
@@ -751,6 +770,7 @@ final class DiffyStore: ObservableObject {
         summaries.removeValue(forKey: id)
         commitHistories.removeValue(forKey: id)
         commitDetails.removeValue(forKey: id)
+        refreshRequestIDs.removeValue(forKey: id)
         watchers[id]?.stop()
         watchers.removeValue(forKey: id)
     }

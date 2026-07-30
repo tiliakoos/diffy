@@ -27,6 +27,12 @@ struct MainView: View {
         .onChange(of: store.groups) { _, _ in
             selectFirstGroupIfNeeded()
         }
+        .onChange(of: store.repositories) { _, repositories in
+            if let selectedRepositoryID,
+               !repositories.contains(where: { $0.id == selectedRepositoryID }) {
+                self.selectedRepositoryID = nil
+            }
+        }
         .sheet(isPresented: repositorySettingsPresented) {
             if let id = selectedRepositoryID {
                 RepositorySettingsView(
@@ -82,7 +88,13 @@ struct MainView: View {
                             repositoryCount: store.repositories.filter {
                                 $0.groupID == group.id && $0.parentRepositoryID == nil
                             }.count,
-                            onRemove: { pendingGroupRemoval = group.id }
+                            onRemove: {
+                                if store.repositories.contains(where: { $0.groupID == group.id }) {
+                                    pendingGroupRemoval = group.id
+                                } else {
+                                    store.removeGroup(group.id, mode: .dissolveIntoStandalone)
+                                }
+                            }
                         )
                         .tag(group.id)
                     }
@@ -135,11 +147,11 @@ struct MainView: View {
                     .font(.caption)
                 }
 
-                if let loadError = store.lastLoadError {
+                if let persistenceError = store.lastPersistenceError {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
-                        Text(loadError)
+                        Text(persistenceError)
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
                     }

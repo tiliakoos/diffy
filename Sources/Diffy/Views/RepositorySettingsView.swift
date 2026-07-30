@@ -50,7 +50,7 @@ struct RepositorySettingsView: View {
                     .padding(.bottom, 16)
                 }
                 .confirmationDialog(
-                    worktreeRemovalTitle,
+                    "Remove worktree?",
                     isPresented: worktreeRemovalDialogPresented,
                     titleVisibility: .visible
                 ) {
@@ -180,21 +180,22 @@ struct RepositorySettingsView: View {
         .formStyle(.grouped)
     }
 
-    private var worktreeRemovalTitle: String { "Remove worktree?" }
-
     private var worktreeRemovalMessage: String {
         guard let id = pendingWorktreeRemoval,
               let child = store.repositories.first(where: { $0.id == id })
         else { return "" }
 
         let parentName = parentRepository?.displayName ?? "its repository"
-        let branchName: String
+        let preservationMessage: String
         switch store.summaries[id]?.branch {
-        case .some(.branch(let name)): branchName = "branch `\(name)`"
-        case .some(.detached(let sha)): branchName = "detached HEAD at `\(sha)`"
-        default: branchName = "its checked-out commit"
+        case .some(.branch(let name)):
+            preservationMessage = "The branch `\(name)` is preserved and can be checked out elsewhere."
+        case .some(.detached(let sha)):
+            preservationMessage = "Detached commit `\(sha)` may eventually be pruned if nothing else references it. Create a branch first if it must be kept."
+        default:
+            preservationMessage = "Create a branch first if the checked-out commit must be kept."
         }
-        return "This deletes the directory at \(child.path) and removes it from \(parentName). \(branchName) itself is preserved and can be checked out elsewhere."
+        return "This deletes the directory at \(child.path) and removes it from \(parentName). \(preservationMessage)"
     }
 
     private var worktreeRemovalDialogPresented: Binding<Bool> {

@@ -4,11 +4,8 @@ import SwiftUI
 @MainActor
 final class MainWindowController: NSObject, NSWindowDelegate {
     private let window: NSWindow
-    private let store: DiffyStore
 
     init(store: DiffyStore) {
-        self.store = store
-
         let initialFrame = NSRect(x: 0, y: 0, width: 1080, height: 700)
         window = NSWindow(
             contentRect: initialFrame,

@@ -1,4 +1,5 @@
 import Combine
+import Foundation
 import XCTest
 import DiffyCore
 @testable import Diffy
@@ -112,7 +113,7 @@ final class DiffyStoreBehaviorTests: XCTestCase {
         XCTAssertNil(store.lastAddError)
     }
 
-    func testCorruptStateSetsLoadErrorAndDoesNotCreateRows() throws {
+    func testCorruptStateSetsPersistenceErrorAndDoesNotCreateRows() throws {
         let storageURL = try makeTemporaryDirectory().appendingPathComponent("repositories.json")
         try "{".write(to: storageURL, atomically: true, encoding: .utf8)
         let store = DiffyStore(storageURL: storageURL)
@@ -121,7 +122,17 @@ final class DiffyStoreBehaviorTests: XCTestCase {
 
         XCTAssertTrue(store.groups.isEmpty)
         XCTAssertTrue(store.repositories.isEmpty)
-        XCTAssertNotNil(store.lastLoadError)
+        XCTAssertNotNil(store.lastPersistenceError)
+    }
+
+    func testSaveFailureSetsPersistenceError() throws {
+        let blockedParent = try makeTemporaryDirectory().appendingPathComponent("not-a-directory")
+        try Data().write(to: blockedParent)
+        let store = DiffyStore(storageURL: blockedParent.appendingPathComponent("repositories.json"))
+
+        store.save()
+
+        XCTAssertTrue(store.lastPersistenceError?.hasPrefix("Failed to save repositories:") == true)
     }
 
     func testRecentCommitLimitPersistsWithoutEagerHistoryLoading() throws {
@@ -243,6 +254,52 @@ final class DiffyStoreBehaviorTests: XCTestCase {
         XCTAssertTrue(store.repositories.allSatisfy { !$0.isAutoManaged })
     }
 
+    func testNewerRefreshWinsWhenOlderFinishesLast() throws {
+        let repositoryURL = try makeTemporaryDirectory().appendingPathComponent("repository")
+        try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
+
+        let group = RepositoryGroup(name: "Group")
+        let repository = RepositoryConfig(displayName: "repo", path: repositoryURL.path, groupID: group.id)
+        let storageURL = try writeState(groups: [group], repositories: [repository])
+        let runner = DelayedRefreshRunner(repositoryPath: repositoryURL.path)
+        let store = DiffyStore(storageURL: storageURL, gitClient: GitClient(runner: runner))
+        defer {
+            runner.releaseFirstRefresh()
+            store.stop()
+        }
+        store.load()
+
+        store.refresh(repositoryID: repository.id)
+        XCTAssertTrue(runner.waitUntilFirstRefreshIsBlocked())
+
+        let newerResult = expectation(description: "newer refresh result is applied")
+        newerResult.assertForOverFulfill = false
+        let newerResultCancellable = store.$summaries.sink { summaries in
+            if summaries[repository.id]?.addedLines == 2 {
+                newerResult.fulfill()
+            }
+        }
+        defer { newerResultCancellable.cancel() }
+
+        store.refresh(repositoryID: repository.id)
+        wait(for: [newerResult], timeout: 2)
+
+        let staleResult = expectation(description: "stale refresh result is ignored")
+        staleResult.isInverted = true
+        let staleResultCancellable = store.$summaries.sink { summaries in
+            if summaries[repository.id]?.addedLines == 1 {
+                staleResult.fulfill()
+            }
+        }
+        defer { staleResultCancellable.cancel() }
+
+        runner.releaseFirstRefresh()
+        XCTAssertTrue(runner.waitUntilFirstRefreshFinishesReading())
+        wait(for: [staleResult], timeout: 0.25)
+
+        XCTAssertEqual(store.summaries[repository.id]?.addedLines, 2)
+    }
+
     /// Builds a temp repo with one commit + a linked `feature` worktree, points a fresh store at
     /// it, adds the repo, and waits until the auto-managed child row is reconciled into existence.
     private func makeStoreWithDiscoveredWorktreeChild() throws -> (store: DiffyStore, repoURL: URL, childURL: URL) {
@@ -319,5 +376,67 @@ final class DiffyStoreBehaviorTests: XCTestCase {
             let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             XCTFail("git \(arguments.joined(separator: " ")) failed: \(error)")
         }
+    }
+}
+
+private final class DelayedRefreshRunner: GitProcessRunning, @unchecked Sendable {
+    private let repositoryPath: String
+    private let lock = NSLock()
+    private let firstRefreshBlocked = DispatchSemaphore(value: 0)
+    private let firstRefreshRelease = DispatchSemaphore(value: 0)
+    private let firstRefreshFinishedReading = DispatchSemaphore(value: 0)
+    private var stagedCallCount = 0
+    private var statusCallCount = 0
+
+    init(repositoryPath: String) {
+        self.repositoryPath = repositoryPath
+    }
+
+    func run(_ command: GitCommand) throws -> String {
+        if command.arguments.contains("worktree"), command.arguments.contains("--porcelain") {
+            let sha = String(repeating: "a", count: 40)
+            return "worktree \(repositoryPath)\nHEAD \(sha)\nbranch refs/heads/main\n\n"
+        }
+
+        if command.arguments.contains("--cached") {
+            lock.lock()
+            stagedCallCount += 1
+            let callNumber = stagedCallCount
+            lock.unlock()
+
+            if callNumber == 1 {
+                firstRefreshBlocked.signal()
+                guard firstRefreshRelease.wait(timeout: .now() + 2) == .success else {
+                    throw GitClientError.commandFailed("Timed out waiting to release the first refresh")
+                }
+                return "1\t0\tfile.txt\0"
+            }
+            return "2\t0\tfile.txt\0"
+        }
+
+        if command.arguments.contains("--porcelain=v1") {
+            lock.lock()
+            statusCallCount += 1
+            let callNumber = statusCallCount
+            lock.unlock()
+
+            if callNumber == 2 {
+                firstRefreshFinishedReading.signal()
+            }
+        }
+
+        return ""
+    }
+
+    func waitUntilFirstRefreshIsBlocked() -> Bool {
+        firstRefreshBlocked.wait(timeout: .now() + 2) == .success
+    }
+
+    func releaseFirstRefresh() {
+        firstRefreshRelease.signal()
+    }
+
+    func waitUntilFirstRefreshFinishesReading() -> Bool {
+        firstRefreshFinishedReading.wait(timeout: .now() + 2) == .success
     }
 }

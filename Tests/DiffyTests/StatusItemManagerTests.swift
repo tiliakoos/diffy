@@ -11,7 +11,7 @@ final class StatusItemManagerTests: XCTestCase {
             visibleRepoCount: 1,
             colors: .default,
             badgeLabel: nil,
-            hasError: false
+            errorCount: 0
         )
         let renamed = BadgeState(
             displayName: "New",
@@ -20,13 +20,13 @@ final class StatusItemManagerTests: XCTestCase {
             visibleRepoCount: 1,
             colors: .default,
             badgeLabel: nil,
-            hasError: false
+            errorCount: 0
         )
 
         XCTAssertNotEqual(original, renamed)
     }
 
-    func testBadgeStateChangesWhenErrorStateChanges() {
+    func testBadgeStateChangesWhenErrorCountChanges() {
         let healthy = BadgeState(
             displayName: "Group",
             added: 0,
@@ -34,18 +34,28 @@ final class StatusItemManagerTests: XCTestCase {
             visibleRepoCount: 1,
             colors: .default,
             badgeLabel: nil,
-            hasError: false
+            errorCount: 0
         )
-        let errored = BadgeState(
+        let oneError = BadgeState(
             displayName: "Group",
             added: 0,
             removed: 0,
             visibleRepoCount: 1,
             colors: .default,
             badgeLabel: nil,
-            hasError: true
+            errorCount: 1
+        )
+        let twoErrors = BadgeState(
+            displayName: "Group",
+            added: 0,
+            removed: 0,
+            visibleRepoCount: 1,
+            colors: .default,
+            badgeLabel: nil,
+            errorCount: 2
         )
 
-        XCTAssertNotEqual(healthy, errored)
+        XCTAssertNotEqual(healthy, oneError)
+        XCTAssertNotEqual(oneError, twoErrors)
     }
 }

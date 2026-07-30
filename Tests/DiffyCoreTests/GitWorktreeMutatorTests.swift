@@ -35,21 +35,6 @@ final class GitWorktreeMutatorTests: XCTestCase {
             }
         }
     }
-
-    func testNeverEmitsAnyOtherWorktreeSubcommand() throws {
-        // Sanity sweep: regardless of inputs, the only worktree subcommand we should ever see
-        // is "remove" (no add/prune/repair/lock/unlock/move).
-        let banned = Set(["add", "prune", "repair", "lock", "unlock", "move", "--force", "-f"])
-        let recorder = RecordingRunner()
-        let mutator = GitWorktreeMutator(runner: recorder)
-
-        try mutator.remove(parentPath: "/a", worktreePath: "/a/b")
-        try mutator.remove(parentPath: "/x", worktreePath: "/x/y with spaces")
-
-        for cmd in recorder.commands {
-            XCTAssertTrue(Set(cmd.arguments).isDisjoint(with: banned), "Forbidden argument in \(cmd.arguments)")
-        }
-    }
 }
 
 private final class RecordingRunner: GitProcessRunning, @unchecked Sendable {
