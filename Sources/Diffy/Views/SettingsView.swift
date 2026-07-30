@@ -4,6 +4,9 @@ struct SettingsView: View {
     @ObservedObject var launchAtLoginController: LaunchAtLoginController
     let updaterController: UpdaterController
 
+    @AppStorage(GlassPrefs.variantKey) private var glassVariant: GlassVariant = .frosted
+    @AppStorage(GlassPrefs.opacityKey) private var glassOpacity: Double = GlassPrefs.defaultOpacity
+
     var body: some View {
         Form {
             Section("General") {
@@ -19,6 +22,18 @@ struct SettingsView: View {
                             .lineLimit(2)
                     }
                     .font(.caption)
+                }
+            }
+
+            Section("Appearance") {
+                Picker("Glass Style", selection: $glassVariant) {
+                    Text("Frosted").tag(GlassVariant.frosted)
+                    Text("Clear").tag(GlassVariant.clear)
+                }
+                .pickerStyle(.segmented)
+
+                LabeledContent("Opacity") {
+                    Slider(value: $glassOpacity, in: GlassPrefs.opacityRange)
                 }
             }
 

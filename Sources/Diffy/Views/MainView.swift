@@ -17,6 +17,8 @@ struct MainView: View {
             sidebar
         } detail: {
             detail
+                .background(GlassBackground(shape: Rectangle()).ignoresSafeArea())
+                .toolbarBackground(.ultraThinMaterial, for: .windowToolbar)
         }
         .navigationSplitViewStyle(.balanced)
         .onAppear {
@@ -92,6 +94,7 @@ struct MainView: View {
                 }
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
 
             Divider()
 
@@ -145,7 +148,7 @@ struct MainView: View {
             }
             .padding(12)
         }
-        .background(.regularMaterial)
+        .background(GlassBackground(shape: Rectangle()).ignoresSafeArea())
         .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
     }
 
@@ -354,6 +357,7 @@ private struct GroupInspectorView: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
             .navigationTitle(group.name.isEmpty ? "New Group" : group.name)
             .onAppear {
                 nameDraft = group.name

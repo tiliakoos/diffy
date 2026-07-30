@@ -20,6 +20,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 880, height: 560)
+        window.isOpaque = false
+        window.backgroundColor = .clear
         let didRestoreFrame = window.setFrameAutosaveName("DiffyMainWindow.v2")
         if !didRestoreFrame {
             window.setContentSize(NSSize(width: 1080, height: 700))

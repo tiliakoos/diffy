@@ -239,8 +239,7 @@ private struct RepoBlock: View {
         .padding(10)
         .background {
             if useCardChrome {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.primary.opacity(0.045))
+                GlassBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         }
     }
