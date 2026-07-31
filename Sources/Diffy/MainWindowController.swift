@@ -17,8 +17,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 880, height: 560)
-        window.isOpaque = false
-        window.backgroundColor = .clear
+        let glass = Self.currentAppearanceMode() == .appleGlass
+        window.isOpaque = !glass
+        window.backgroundColor = glass ? .clear : .windowBackgroundColor
         let didRestoreFrame = window.setFrameAutosaveName("DiffyMainWindow.v2")
         if !didRestoreFrame {
             window.setContentSize(NSSize(width: 1080, height: 700))
@@ -28,7 +29,24 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.delegate = self
-        window.contentViewController = NSHostingController(rootView: MainView(store: store))
+        let onAppearanceModeChange: (AppearanceMode) -> Void = { [weak self] mode in
+            self?.applyWindowTranslucency(for: mode)
+        }
+        window.contentViewController = NSHostingController(
+            rootView: MainView(store: store, onAppearanceModeChange: onAppearanceModeChange)
+        )
+    }
+
+    private static func currentAppearanceMode() -> AppearanceMode {
+        let raw = UserDefaults.standard.string(forKey: GlassPrefs.modeKey) ?? ""
+        return AppearanceMode(rawValue: raw) ?? .standard
+    }
+
+    private func applyWindowTranslucency(for mode: AppearanceMode) {
+        let glass = mode == .appleGlass
+        window.isOpaque = !glass
+        window.backgroundColor = glass ? .clear : .windowBackgroundColor
+        window.invalidateShadow()
     }
 
     func show() {

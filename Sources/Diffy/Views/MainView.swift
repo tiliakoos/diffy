@@ -4,6 +4,7 @@ import SwiftUI
 
 struct MainView: View {
     @ObservedObject var store: DiffyStore
+    var onAppearanceModeChange: (AppearanceMode) -> Void = { _ in }
 
     @Environment(\.openSettings) private var openSettings
 
@@ -12,17 +13,42 @@ struct MainView: View {
     @State private var pendingRepositoryPath: String?
     @State private var selectedRepositoryID: UUID?
 
+    @AppStorage(GlassPrefs.modeKey) private var appearanceMode: AppearanceMode = .standard
+
+    @ViewBuilder
+    private var sidebarBackground: some View {
+        if appearanceMode == .appleGlass {
+            GlassBackground(shape: Rectangle()).ignoresSafeArea()
+        } else {
+            Color.clear.background(.regularMaterial).ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder
+    private var detailBackground: some View {
+        if appearanceMode == .appleGlass {
+            GlassBackground(shape: Rectangle()).ignoresSafeArea()
+        }
+    }
+
+    private var toolbarMaterial: Material {
+        appearanceMode == .appleGlass ? .ultraThin : .regular
+    }
+
     var body: some View {
         NavigationSplitView {
             sidebar
         } detail: {
             detail
-                .background(GlassBackground(shape: Rectangle()).ignoresSafeArea())
-                .toolbarBackground(.ultraThinMaterial, for: .windowToolbar)
+                .background(detailBackground)
+                .toolbarBackground(toolbarMaterial, for: .windowToolbar)
         }
         .navigationSplitViewStyle(.balanced)
         .onAppear {
             selectFirstGroupIfNeeded()
+        }
+        .onChange(of: appearanceMode) { _, mode in
+            onAppearanceModeChange(mode)
         }
         .onChange(of: store.groups) { _, _ in
             selectFirstGroupIfNeeded()
@@ -106,7 +132,7 @@ struct MainView: View {
                 }
             }
             .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
+            .scrollContentBackground(appearanceMode == .appleGlass ? .hidden : .automatic)
 
             Divider()
 
@@ -160,7 +186,7 @@ struct MainView: View {
             }
             .padding(12)
         }
-        .background(GlassBackground(shape: Rectangle()).ignoresSafeArea())
+        .background(sidebarBackground)
         .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
     }
 
@@ -295,6 +321,8 @@ private struct GroupInspectorView: View {
     @State private var showingBadgeEditor = false
     @FocusState private var isNameFocused: Bool
 
+    @AppStorage(GlassPrefs.modeKey) private var appearanceMode: AppearanceMode = .standard
+
     private var group: RepositoryGroup? {
         store.groups.first { $0.id == groupID }
     }
@@ -369,7 +397,7 @@ private struct GroupInspectorView: View {
                 }
             }
             .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
+            .scrollContentBackground(appearanceMode == .appleGlass ? .hidden : .automatic)
             .navigationTitle(group.name.isEmpty ? "New Group" : group.name)
             .onAppear {
                 nameDraft = group.name

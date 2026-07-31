@@ -10,7 +10,7 @@ Diffy is local-only. It does not use GitHub, GitLab, Bitbucket, PRs, issues, clo
 
 ## Status
 
-v0.8.1 — available via Homebrew Cask. The app uses macOS 26 Liquid Glass APIs and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
+v0.8.1 — available via Homebrew Cask. The app uses macOS 26 APIs (with an optional Apple Glass appearance) and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
 
 This patch prevents stale refresh results, surfaces persistence failures, keeps error-count tooltips current, and tightens repository, group, and worktree interactions.
 
@@ -27,7 +27,7 @@ Diffy remains focused on its original local-only, menu-bar-first scope.
 - **Branch labels** appear in the popover and the repository manager. Detached HEAD shows the short SHA in italics.
 - **Linked worktrees** discovered automatically from `git worktree list --porcelain` and shown as indented sub-rows under one family owner, each with their own diff stats and branch. Manually-added worktrees stay as top-level rows and are never duplicated under a sibling; the first manual row in a family owns only unadded siblings. Per-worktree "Count toward group totals" works like any other repo. Remove a finished auto-managed worktree from inside Diffy via a confirmation dialog — Diffy never uses `--force`, so dirty worktrees must be handled in your terminal first.
 - Open changed files in a configured editor (Xcode, Cursor, VS Code, Zed, or a custom shell command). Deleted-file rows are shown for context but are not opened from the working tree.
-- **Adjustable Liquid Glass**: the main window shows the desktop through real glass, and popover repo cards use the same material. Settings → Appearance offers a Frosted/Clear style picker and an opacity slider (with a legibility floor); changes apply live and persist. macOS's Reduce Transparency setting overrides glass with an opaque look, as expected.
+- **Standard / Apple Glass appearance**: the default is a solid opaque window (Standard). Settings → Appearance lets you switch to **Apple Glass**, where the main window shows the desktop through real glass and popover repo cards use the same material; a Frosted/Clear style picker and an opacity slider (with a legibility floor) become available, and changes apply live and persist. macOS's Reduce Transparency setting overrides glass with an opaque look, as expected.
 - **Launch at Login** toggle in Settings (requires Diffy installed to `/Applications`).
 - Filesystem-triggered refresh with polling fallback.
 - Homebrew updates today, with Sparkle packaged behind release metadata for a future appcast.

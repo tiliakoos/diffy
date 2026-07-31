@@ -4,6 +4,7 @@ struct SettingsView: View {
     @ObservedObject var launchAtLoginController: LaunchAtLoginController
     let updaterController: UpdaterController
 
+    @AppStorage(GlassPrefs.modeKey) private var appearanceMode: AppearanceMode = .standard
     @AppStorage(GlassPrefs.variantKey) private var glassVariant: GlassVariant = .frosted
     @AppStorage(GlassPrefs.opacityKey) private var glassOpacity: Double = GlassPrefs.defaultOpacity
 
@@ -26,14 +27,22 @@ struct SettingsView: View {
             }
 
             Section("Appearance") {
-                Picker("Glass Style", selection: $glassVariant) {
-                    Text("Frosted").tag(GlassVariant.frosted)
-                    Text("Clear").tag(GlassVariant.clear)
+                Picker("Mode", selection: $appearanceMode) {
+                    Text("Standard").tag(AppearanceMode.standard)
+                    Text("Apple Glass").tag(AppearanceMode.appleGlass)
                 }
                 .pickerStyle(.segmented)
 
-                LabeledContent("Opacity") {
-                    Slider(value: $glassOpacity, in: GlassPrefs.opacityRange)
+                if appearanceMode == .appleGlass {
+                    Picker("Glass Style", selection: $glassVariant) {
+                        Text("Frosted").tag(GlassVariant.frosted)
+                        Text("Clear").tag(GlassVariant.clear)
+                    }
+                    .pickerStyle(.segmented)
+
+                    LabeledContent("Opacity") {
+                        Slider(value: $glassOpacity, in: GlassPrefs.opacityRange)
+                    }
                 }
             }
 

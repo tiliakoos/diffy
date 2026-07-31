@@ -172,6 +172,8 @@ private struct RepoBlock: View {
     @State private var isHistoryExpanded = false
     @State private var expandedCommitSHA: String?
 
+    @AppStorage(GlassPrefs.modeKey) private var appearanceMode: AppearanceMode = .standard
+
     private var summary: RepoDiffSummary? {
         store.summaries[repository.id]
     }
@@ -229,7 +231,12 @@ private struct RepoBlock: View {
         .padding(10)
         .background {
             if useCardChrome {
-                GlassBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                if appearanceMode == .appleGlass {
+                    GlassBackground(shape: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.primary.opacity(0.045))
+                }
             }
         }
     }

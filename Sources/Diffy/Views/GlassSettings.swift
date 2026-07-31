@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum AppearanceMode: String {
+    case standard
+    case appleGlass
+}
+
 enum GlassVariant: String {
     case frosted
     case clear
@@ -8,6 +13,7 @@ enum GlassVariant: String {
 }
 
 enum GlassPrefs {
+    static let modeKey = "DiffyAppearanceMode"
     static let variantKey = "DiffyGlassVariant"
     static let opacityKey = "DiffyGlassOpacity"
     static let defaultOpacity = 0.5
