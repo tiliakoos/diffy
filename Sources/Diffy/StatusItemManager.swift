@@ -173,6 +173,7 @@ final class StatusItemManager: NSObject {
             }
             NSApp.activate()
             item.popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            item.popover.contentViewController?.view.window?.makeKey()
         }
     }
 
