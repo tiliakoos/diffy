@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="Diffy"
 BUNDLE_ID="com.nickt.diffy"
-VERSION="${1:-0.9.1}"
+VERSION="${1:-0.9.2}"
 BUILD_NUMBER="${2:-1}"
 DIST_DIR="$ROOT_DIR/dist"
 RELEASE_DIR="$DIST_DIR/release"

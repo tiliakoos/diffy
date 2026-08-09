@@ -10,9 +10,9 @@ Diffy is local-only. It does not use GitHub, GitLab, Bitbucket, PRs, issues, clo
 
 ## Status
 
-v0.9.1 — available via Homebrew Cask. The app uses macOS 26 APIs (with an optional Apple Glass appearance) and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
+v0.9.2 — available via Homebrew Cask. The app uses macOS 26 APIs (with an optional Apple Glass appearance) and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
 
-This patch opens the menu-bar popover in its active, high-contrast appearance immediately, without requiring a second click inside it.
+This patch makes the menu-bar popover window key immediately after it is shown, so native materials and controls use their active, high-contrast appearance on the first click.
 
 Diffy remains focused on its original local-only, menu-bar-first scope.
 
