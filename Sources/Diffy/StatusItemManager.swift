@@ -171,6 +171,7 @@ final class StatusItemManager: NSObject {
             for other in items.values where other.popover.isShown {
                 other.popover.performClose(nil)
             }
+            NSApp.activate()
             item.popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }
