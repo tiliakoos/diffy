@@ -22,7 +22,9 @@ final class RepositoryWatcher {
             copyDescription: nil
         )
 
-        let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes)
+        let flags = FSEventStreamCreateFlags(
+            kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagNoDefer
+        )
         guard let createdStream = FSEventStreamCreate(
             kCFAllocatorDefault,
             { _, info, _, _, _, _ in
@@ -33,7 +35,7 @@ final class RepositoryWatcher {
             &context,
             paths as CFArray,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            1.0,
+            0.2,
             flags
         ) else {
             return false

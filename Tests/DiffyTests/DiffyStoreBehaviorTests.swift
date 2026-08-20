@@ -300,6 +300,117 @@ final class DiffyStoreBehaviorTests: XCTestCase {
         XCTAssertEqual(store.summaries[repository.id]?.addedLines, 2)
     }
 
+    // MARK: - Popover history gate + poll tiers (stubbed git)
+
+    func testRefreshLoadedRecentCommitsSkipsFreshUnchangedHistory() throws {
+        let (store, group, repository, runner) = try makeStoreWithStubbedRunner()
+        defer { store.stop() }
+
+        waitForSummary(store, repositoryID: repository.id) {
+            store.refreshAll()
+        }
+        waitForHistoryLoad(store, repositoryID: repository.id) {
+            store.loadRecentCommits(repositoryID: repository.id)
+        }
+        XCTAssertEqual(runner.logCallCount, 1)
+        XCTAssertNotNil(store.commitHistories[repository.id]?.fetchedAt)
+
+        store.refreshLoadedRecentCommits(groupID: group.id)
+
+        // A refetch would set `isLoading = true` synchronously; the gate must skip instead.
+        XCTAssertEqual(store.commitHistories[repository.id]?.isLoading, false)
+        XCTAssertEqual(runner.logCallCount, 1)
+    }
+
+    func testRefreshLoadedRecentCommitsRefetchesAfterMaterialChange() throws {
+        let (store, group, repository, runner) = try makeStoreWithStubbedRunner()
+        defer { store.stop() }
+
+        waitForSummary(store, repositoryID: repository.id) {
+            store.refreshAll()
+        }
+        waitForHistoryLoad(store, repositoryID: repository.id) {
+            store.loadRecentCommits(repositoryID: repository.id)
+        }
+
+        runner.setUnstagedOutput("1\t0\tfile.txt\0")
+        waitForSummary(store, repositoryID: repository.id, where: { $0.addedLines == 1 }) {
+            store.refreshAll()
+        }
+
+        store.refreshLoadedRecentCommits(groupID: group.id)
+
+        XCTAssertEqual(store.commitHistories[repository.id]?.isLoading, true)
+        waitForHistoryLoad(store, repositoryID: repository.id) {}
+        XCTAssertEqual(runner.logCallCount, 2)
+    }
+
+    func testPollTickRefreshesUnwatchedRepositories() throws {
+        let (store, _, repository, _) = try makeStoreWithStubbedRunner()
+        defer { store.stop() }
+
+        // `start()` was never called, so no watchers exist — a non-sweep tick must refresh.
+        waitForSummary(store, repositoryID: repository.id) {
+            store.pollTick(1)
+        }
+    }
+
+    /// One group + one repo backed by a real temp directory (paths must exist — `GitClient`
+    /// checks `fileExists` before consulting the runner) and a `StubHistoryRunner`.
+    private func makeStoreWithStubbedRunner() throws
+        -> (store: DiffyStore, group: RepositoryGroup, repository: RepositoryConfig, runner: StubHistoryRunner) {
+        let tempDir = try makeTemporaryDirectory()
+        let repositoryURL = tempDir.appendingPathComponent("repository")
+        try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)
+
+        let group = RepositoryGroup(name: "Group")
+        let repository = RepositoryConfig(displayName: "repo", path: repositoryURL.path, groupID: group.id)
+        let storageURL = try writeState(groups: [group], repositories: [repository])
+        let runner = StubHistoryRunner()
+        let store = DiffyStore(storageURL: storageURL, gitClient: GitClient(runner: runner))
+        store.load()
+        return (store, group, repository, runner)
+    }
+
+    /// Subscribe to `$summaries`, run `trigger`, and block until the repo's summary satisfies
+    /// `predicate`.
+    private func waitForSummary(
+        _ store: DiffyStore,
+        repositoryID: UUID,
+        timeout: TimeInterval = 5,
+        where predicate: @escaping (RepoDiffSummary) -> Bool = { _ in true },
+        _ trigger: () -> Void
+    ) {
+        let expectation = XCTestExpectation(description: "summary for \(repositoryID)")
+        expectation.assertForOverFulfill = false
+        let cancellable = store.$summaries.sink { summaries in
+            if let summary = summaries[repositoryID], predicate(summary) { expectation.fulfill() }
+        }
+        defer { cancellable.cancel() }
+        trigger()
+        wait(for: [expectation], timeout: timeout)
+    }
+
+    /// Run `trigger`, then subscribe to `$commitHistories` and block until the repo's history
+    /// finishes loading. Triggering first matters: a `loadRecentCommits` call sets `isLoading`
+    /// synchronously, so subscribing afterwards can't be fulfilled prematurely by a stale
+    /// already-loaded current value.
+    private func waitForHistoryLoad(
+        _ store: DiffyStore,
+        repositoryID: UUID,
+        timeout: TimeInterval = 5,
+        _ trigger: () -> Void
+    ) {
+        let expectation = XCTestExpectation(description: "history loaded for \(repositoryID)")
+        expectation.assertForOverFulfill = false
+        trigger()
+        let cancellable = store.$commitHistories.sink { histories in
+            if histories[repositoryID]?.isLoading == false { expectation.fulfill() }
+        }
+        defer { cancellable.cancel() }
+        wait(for: [expectation], timeout: timeout)
+    }
+
     /// Builds a temp repo with one commit + a linked `feature` worktree, points a fresh store at
     /// it, adds the repo, and waits until the auto-managed child row is reconciled into existence.
     private func makeStoreWithDiscoveredWorktreeChild() throws -> (store: DiffyStore, repoURL: URL, childURL: URL) {
@@ -376,6 +487,44 @@ final class DiffyStoreBehaviorTests: XCTestCase {
             let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             XCTFail("git \(arguments.joined(separator: " ")) failed: \(error)")
         }
+    }
+}
+
+/// Answers the refresh + recent-commit command set with canned output and counts `log`
+/// invocations. Upstream lookup fails like a repo with no upstream (a benign early-return).
+private final class StubHistoryRunner: GitProcessRunning, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _logCallCount = 0
+    private var _unstagedOutput = ""
+
+    var logCallCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _logCallCount
+    }
+
+    func setUnstagedOutput(_ value: String) {
+        lock.lock(); defer { lock.unlock() }
+        _unstagedOutput = value
+    }
+
+    func run(_ command: GitCommand) throws -> String {
+        if command.arguments.contains("log") {
+            lock.lock(); defer { lock.unlock() }
+            _logCallCount += 1
+            return ""
+        }
+        if command.arguments.contains("@{upstream}") {
+            throw GitClientError.commandFailed("no upstream")
+        }
+        if command.arguments.contains("--cached") {
+            return ""
+        }
+        if command.arguments.contains("--numstat") {
+            lock.lock(); defer { lock.unlock() }
+            return _unstagedOutput
+        }
+        // hasHead rev-parse, worktree list, porcelain status: succeed with empty/trivial output.
+        return ""
     }
 }
 

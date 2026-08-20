@@ -18,6 +18,8 @@ struct CommitHistoryState: Equatable {
     var commits: [RecentCommitSummary]
     var isLoading: Bool
     var errorMessage: String?
+    /// Set on successful load only, so failed loads retry on the next popover open.
+    var fetchedAt: Date?
 }
 
 struct CommitDetailsState: Equatable {
@@ -94,13 +96,28 @@ final class DiffyStore: ObservableObject {
         rebuildWatchers()
         refreshAll()
         pollingTask = Task { [weak self] in
+            var tick = 0
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(for: .seconds(10))
                 } catch {
                     break
                 }
-                self?.refreshAll()
+                tick += 1
+                self?.pollTick(tick)
+            }
+        }
+    }
+
+    /// Polling is a fallback, not the primary refresh path (FSEvents is). Every tick (10s)
+    /// refreshes only repos without a live watcher; every 6th tick (60s) sweeps everything
+    /// as a safety net for watchers that started but silently died.
+    func pollTick(_ tick: Int) {
+        if tick.isMultiple(of: 6) {
+            refreshAll()
+        } else {
+            for repository in repositories where watchers[repository.id] == nil {
+                refresh(repository)
             }
         }
     }
@@ -290,7 +307,8 @@ final class DiffyStore: ObservableObject {
             limit: limit,
             commits: existing?.limit == limit ? existing?.commits ?? [] : [],
             isLoading: true,
-            errorMessage: nil
+            errorMessage: nil,
+            fetchedAt: existing?.fetchedAt
         )
 
         Task.detached(priority: .utility) { [gitClient] in
@@ -308,7 +326,8 @@ final class DiffyStore: ObservableObject {
                         limit: limit,
                         commits: commits,
                         isLoading: false,
-                        errorMessage: nil
+                        errorMessage: nil,
+                        fetchedAt: Date()
                     )
                     let visibleSHAs = Set(commits.map(\.sha))
                     if let details = self.commitDetails[repositoryID], !visibleSHAs.contains(details.sha) {
@@ -377,6 +396,17 @@ final class DiffyStore: ObservableObject {
 
     func refreshLoadedRecentCommits(groupID: UUID) {
         for repository in repositories where repository.groupID == groupID && commitHistories[repository.id] != nil {
+            // Skip the refetch when the history is fresh and nothing material changed since it
+            // was fetched. `refreshedAt` only advances on material summary changes (equality
+            // ignores it), so a commit bumps it while an idle popover reopen does not. The 60s
+            // cap bounds staleness for history rewrites that leave the working tree unchanged
+            // (e.g. amending only a commit message).
+            if let fetchedAt = commitHistories[repository.id]?.fetchedAt,
+               Date().timeIntervalSince(fetchedAt) < 60,
+               let changedAt = summaries[repository.id]?.refreshedAt,
+               changedAt <= fetchedAt {
+                continue
+            }
             loadRecentCommits(repositoryID: repository.id, force: true)
         }
     }
