@@ -16,11 +16,6 @@ struct RepositorySettingsView: View {
         store.repositories.first { $0.id == repositoryID }
     }
 
-    private var parentRepository: RepositoryConfig? {
-        guard let repository, let parentID = repository.parentRepositoryID else { return nil }
-        return store.repositories.first { $0.id == parentID }
-    }
-
     var body: some View {
         Group {
             if let repository {
@@ -181,21 +176,8 @@ struct RepositorySettingsView: View {
     }
 
     private var worktreeRemovalMessage: String {
-        guard let id = pendingWorktreeRemoval,
-              let child = store.repositories.first(where: { $0.id == id })
-        else { return "" }
-
-        let parentName = parentRepository?.displayName ?? "its repository"
-        let preservationMessage: String
-        switch store.summaries[id]?.branch {
-        case .some(.branch(let name)):
-            preservationMessage = "The branch `\(name)` is preserved and can be checked out elsewhere."
-        case .some(.detached(let sha)):
-            preservationMessage = "Detached commit `\(sha)` may eventually be pruned if nothing else references it. Create a branch first if it must be kept."
-        default:
-            preservationMessage = "Create a branch first if the checked-out commit must be kept."
-        }
-        return "This deletes the directory at \(child.path) and removes it from \(parentName). \(preservationMessage)"
+        guard let id = pendingWorktreeRemoval else { return "" }
+        return store.worktreeRemovalMessage(for: id)
     }
 
     private var worktreeRemovalDialogPresented: Binding<Bool> {

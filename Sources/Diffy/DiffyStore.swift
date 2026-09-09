@@ -43,6 +43,7 @@ final class DiffyStore: ObservableObject {
     @Published private(set) var lastAddError: String?
     @Published private(set) var lastPersistenceError: String?
     @Published private(set) var lastWorktreeRemovalError: String?
+    @Published private(set) var lastWorktreeRemovalRepositoryID: UUID?
 
     private let gitClient: GitClient
     private let worktreeMutator = GitWorktreeMutator()
@@ -572,6 +573,23 @@ final class DiffyStore: ObservableObject {
 
     func clearWorktreeRemovalError() {
         lastWorktreeRemovalError = nil
+        lastWorktreeRemovalRepositoryID = nil
+    }
+
+    /// Confirmation text for worktree removal, shared by the settings sheet and the menu-bar popover.
+    func worktreeRemovalMessage(for repositoryID: UUID) -> String {
+        guard let child = repositories.first(where: { $0.id == repositoryID }) else { return "" }
+        let parentName = repositories.first(where: { $0.id == child.parentRepositoryID })?.displayName ?? "its repository"
+        let preservationMessage: String
+        switch summaries[repositoryID]?.branch {
+        case .some(.branch(let name)):
+            preservationMessage = "The branch `\(name)` is preserved and can be checked out elsewhere."
+        case .some(.detached(let sha)):
+            preservationMessage = "Detached commit `\(sha)` may eventually be pruned if nothing else references it. Create a branch first if it must be kept."
+        default:
+            preservationMessage = "Create a branch first if the checked-out commit must be kept."
+        }
+        return "This deletes the directory at \(child.path) and removes it from \(parentName). \(preservationMessage)"
     }
 
     func removeWorktree(repositoryID: UUID) {
@@ -588,6 +606,7 @@ final class DiffyStore: ObservableObject {
                 try mutator.remove(parentPath: parentPath, worktreePath: childPath)
                 await MainActor.run {
                     self.lastWorktreeRemovalError = nil
+                    self.lastWorktreeRemovalRepositoryID = nil
                     // FSEvents on the parent's .git/worktrees/ will drive natural reconcile; trigger
                     // an immediate refresh too so the row drops without waiting on the debounce.
                     self.refresh(repositoryID: parentID)
@@ -595,6 +614,7 @@ final class DiffyStore: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.lastWorktreeRemovalError = error.localizedDescription
+                    self.lastWorktreeRemovalRepositoryID = repositoryID
                 }
             }
         }

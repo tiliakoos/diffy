@@ -107,7 +107,8 @@ struct PopoverContentView: View {
                             useCardChrome: orderedGroupRepos.count > 1,
                             copiedKey: copiedKey,
                             onCopyPath: copyPath,
-                            onCopyCommit: copyToPasteboard
+                            onCopyCommit: copyToPasteboard,
+                            onCopySilent: copySilent
                         )
                             .padding(.leading, repository.parentRepositoryID == nil ? 0 : 16)
                     }
@@ -158,6 +159,11 @@ struct PopoverContentView: View {
             copiedKey = key
         }
     }
+
+    private func copySilent(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
 }
 
 private struct RepoBlock: View {
@@ -168,9 +174,11 @@ private struct RepoBlock: View {
     let copiedKey: String?
     let onCopyPath: (String, RepositoryConfig) -> Void
     let onCopyCommit: (String, String) -> Void
+    let onCopySilent: (String) -> Void
 
     @State private var isHistoryExpanded = false
     @State private var expandedCommitSHA: String?
+    @State private var pendingWorktreeRemoval = false
 
     @AppStorage(GlassPrefs.modeKey) private var appearanceMode: AppearanceMode = .standard
 
@@ -190,6 +198,16 @@ private struct RepoBlock: View {
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     BranchSubtitle(branch: summary?.branch)
+                }
+                .contextMenu {
+                    Button("Copy Full Path") {
+                        onCopySilent(repository.path)
+                    }
+                    if case .branch(let name)? = summary?.branch {
+                        Button("Copy Branch Name") {
+                            onCopySilent(name)
+                        }
+                    }
                 }
                 Spacer(minLength: 8)
                 if let summary {
@@ -227,6 +245,29 @@ private struct RepoBlock: View {
             }
 
             recentCommitsSection
+
+            if repository.isAutoManaged && !store.isGitMainWorktree(repositoryID: repository.id) {
+                HStack {
+                    Spacer()
+                    Button(role: .destructive) {
+                        pendingWorktreeRemoval = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove this worktree from disk")
+                }
+                if store.lastWorktreeRemovalRepositoryID == repository.id,
+                   let error = store.lastWorktreeRemovalError {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(error)
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                }
+            }
         }
         .padding(10)
         .background {
@@ -238,6 +279,19 @@ private struct RepoBlock: View {
                         .fill(Color.primary.opacity(0.045))
                 }
             }
+        }
+        .confirmationDialog(
+            "Remove worktree?",
+            isPresented: $pendingWorktreeRemoval,
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                store.clearWorktreeRemovalError()
+                store.removeWorktree(repositoryID: repository.id)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(store.worktreeRemovalMessage(for: repository.id))
         }
     }
 
