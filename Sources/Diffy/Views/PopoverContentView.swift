@@ -253,10 +253,13 @@ private struct RepoBlock: View {
                         pendingWorktreeRemoval = true
                     } label: {
                         Image(systemName: "trash")
+                            .imageScale(.small)
                     }
                     .buttonStyle(.borderless)
+                    .font(.caption2)
                     .help("Remove this worktree from disk")
                 }
+                .padding(.top, -4)
                 if store.lastWorktreeRemovalRepositoryID == repository.id,
                    let error = store.lastWorktreeRemovalError {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
