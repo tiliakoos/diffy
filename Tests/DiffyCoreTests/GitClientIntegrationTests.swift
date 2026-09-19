@@ -108,6 +108,46 @@ final class GitClientIntegrationTests: XCTestCase {
     }
 
 
+    func testSummarizeCountsUntrackedSymlinkAsOneTextLine() throws {
+        let repo = try TemporaryGitRepository()
+        try repo.write("tracked.txt", contents: "one\n")
+        try repo.git("add", "tracked.txt")
+        try repo.git("commit", "-m", "initial")
+
+        try FileManager.default.createSymbolicLink(
+            atPath: repo.url.appendingPathComponent("link.txt").path,
+            withDestinationPath: "tracked.txt"
+        )
+
+        let config = RepositoryConfig(displayName: "Temp", path: repo.path, groupID: UUID())
+        let summary = try GitClient().summarize(config)
+
+        let link = try XCTUnwrap(summary.unstagedFiles.first { $0.path == "link.txt" })
+        XCTAssertEqual(link.addedLines, 1)
+        XCTAssertFalse(link.isBinary)
+    }
+
+    func testSummarizeTreatsUnreadableUntrackedFileAsNonBinary() throws {
+        try XCTSkipIf(geteuid() == 0, "Root can read permission-less files")
+        let repo = try TemporaryGitRepository()
+        try repo.write("tracked.txt", contents: "one\n")
+        try repo.git("add", "tracked.txt")
+        try repo.git("commit", "-m", "initial")
+
+        try repo.write("secret.txt", contents: "hidden\n")
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0],
+            ofItemAtPath: repo.url.appendingPathComponent("secret.txt").path
+        )
+
+        let config = RepositoryConfig(displayName: "Temp", path: repo.path, groupID: UUID())
+        let summary = try GitClient().summarize(config)
+
+        let file = try XCTUnwrap(summary.unstagedFiles.first { $0.path == "secret.txt" })
+        XCTAssertFalse(file.isBinary)
+        XCTAssertEqual(file.addedLines, 0)
+    }
+
     func testSummarizesTemporaryRepositoryAndReturnsToZeroAfterCommit() throws {
         let repo = try TemporaryGitRepository()
         try repo.write("tracked.txt", contents: "one\n")

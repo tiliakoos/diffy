@@ -34,7 +34,11 @@ private final class DataBox: @unchecked Sendable {
 }
 
 public struct GitProcessRunner: GitProcessRunning, Sendable {
-    public init() {}
+    private let timeout: TimeInterval
+
+    public init(timeout: TimeInterval = 30) {
+        self.timeout = timeout
+    }
 
     public func run(_ command: GitCommand) throws -> String {
         let process = Process()
@@ -80,11 +84,24 @@ public struct GitProcessRunner: GitProcessRunning, Sendable {
             throw error
         }
 
-        process.waitUntilExit()
+        // waitUntilExit() blocks forever on a stalled child (dead mount, inherited pipes),
+        // which would permanently leak a cooperative-pool thread per stall.
+        let exited = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            process.waitUntilExit()
+            exited.signal()
+        }
+        if exited.wait(timeout: .now() + timeout) == .timedOut {
+            outputPipe.fileHandleForReading.readabilityHandler = nil
+            errorPipe.fileHandleForReading.readabilityHandler = nil
+            process.terminate()
+            throw GitClientError.commandFailed("git command timed out after \(Int(timeout))s")
+        }
         group.wait()
 
-        let output = String(data: outputData.snapshot(), encoding: .utf8) ?? ""
-        let error = String(data: errorData.snapshot(), encoding: .utf8) ?? ""
+        // Lossy decode: one non-UTF-8 filename or commit subject must not blank the whole output.
+        let output = String(decoding: outputData.snapshot(), as: UTF8.self)
+        let error = String(decoding: errorData.snapshot(), as: UTF8.self)
 
         guard process.terminationStatus == 0 else {
             throw GitClientError.commandFailed(error.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -244,11 +261,15 @@ public struct GitClient: @unchecked Sendable {
     private func statForUntrackedFile(repositoryPath: String, relativePath: String) -> FileLineStat {
         let url = URL(fileURLWithPath: repositoryPath).appendingPathComponent(relativePath)
 
-        guard
-            let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-            let type = attributes[.type] as? FileAttributeType,
-            type == .typeRegular
-        else {
+        let attributes = try? fileManager.attributesOfItem(atPath: url.path)
+        let type = attributes?[.type] as? FileAttributeType
+
+        // Git stores a symlink's target path as its content: one line, never binary.
+        if type == .typeSymbolicLink {
+            return FileLineStat(addedLines: 1, removedLines: 0, isBinary: false)
+        }
+
+        guard let attributes, type == .typeRegular else {
             return FileLineStat(addedLines: 0, removedLines: 0, isBinary: true)
         }
 
@@ -257,8 +278,9 @@ public struct GitClient: @unchecked Sendable {
             return FileLineStat(addedLines: 0, removedLines: 0, isBinary: false, isTooLarge: true)
         }
 
+        // Unreadable is not binary; report no lines rather than a misleading label.
         guard let data = try? Data(contentsOf: url) else {
-            return FileLineStat(addedLines: 0, removedLines: 0, isBinary: true)
+            return FileLineStat(addedLines: 0, removedLines: 0, isBinary: false)
         }
 
         if data.contains(0) {

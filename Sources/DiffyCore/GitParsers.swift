@@ -94,11 +94,22 @@ public enum GitNumstatParser {
             guard let path else { break }
 
             let isBinary = added == "-" || removed == "-"
-            stats[String(path)] = FileLineStat(
+            let stat = FileLineStat(
                 addedLines: Int(added) ?? 0,
                 removedLines: Int(removed) ?? 0,
                 isBinary: isBinary
             )
+            let key = String(path)
+            // Unmerged paths appear twice mid-conflict (combined-diff artifact); merge, not last-wins.
+            if let existing = stats[key] {
+                stats[key] = FileLineStat(
+                    addedLines: existing.addedLines + stat.addedLines,
+                    removedLines: existing.removedLines + stat.removedLines,
+                    isBinary: existing.isBinary || stat.isBinary
+                )
+            } else {
+                stats[key] = stat
+            }
         }
 
         return stats
