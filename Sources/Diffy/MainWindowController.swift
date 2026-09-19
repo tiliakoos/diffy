@@ -20,7 +20,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         let glass = Self.currentAppearanceMode() == .appleGlass
         window.isOpaque = !glass
         window.backgroundColor = glass ? .clear : .windowBackgroundColor
-        let didRestoreFrame = window.setFrameAutosaveName("DiffyMainWindow.v2")
+        _ = window.setFrameAutosaveName("DiffyMainWindow.v2")
+        // setFrameAutosaveName returns whether the name was set, not whether a saved frame
+        // existed — setFrameUsingName is the real "restored" signal for the fallback.
+        let didRestoreFrame = window.setFrameUsingName("DiffyMainWindow.v2")
         if !didRestoreFrame {
             window.setContentSize(NSSize(width: 1080, height: 700))
             window.center()

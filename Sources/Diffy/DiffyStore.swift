@@ -44,6 +44,7 @@ final class DiffyStore: ObservableObject {
     @Published private(set) var lastPersistenceError: String?
     @Published private(set) var lastWorktreeRemovalError: String?
     @Published private(set) var lastWorktreeRemovalRepositoryID: UUID?
+    @Published private(set) var lastEditorError: String?
 
     private let gitClient: GitClient
     private let worktreeMutator = GitWorktreeMutator()
@@ -126,7 +127,7 @@ final class DiffyStore: ObservableObject {
     /// Defensive cleanup for auto-managed rows whose parent relationship or path identity
     /// is already invalid in persisted state.
     private func normalizeRepositoryRows() -> Bool {
-        let byID = Dictionary(uniqueKeysWithValues: repositories.map { ($0.id, $0) })
+        let byID = Dictionary(repositories.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var idsToRemove = Set<UUID>()
 
         for repo in repositories where repo.isAutoManaged {
@@ -468,7 +469,7 @@ final class DiffyStore: ObservableObject {
     }
 
     func reorderGroups(_ orderedIDs: [UUID]) {
-        let byID = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
+        let byID = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var reordered: [RepositoryGroup] = []
         reordered.reserveCapacity(groups.count)
         for id in orderedIDs {
@@ -526,10 +527,13 @@ final class DiffyStore: ObservableObject {
     /// the parent's most-recent porcelain output.
     func isGitMainWorktree(repositoryID: UUID) -> Bool {
         guard let repo = repositories.first(where: { $0.id == repositoryID }),
-              let parentID = repo.parentRepositoryID,
-              let entries = lastWorktreeEntries[parentID],
-              let first = entries.first
+              let parentID = repo.parentRepositoryID
         else { return false }
+        // Fail closed until the parent's porcelain output is cached: the remove button stays
+        // disabled rather than briefly enabling a destructive action on the main worktree.
+        guard let entries = lastWorktreeEntries[parentID],
+              let first = entries.first
+        else { return true }
         return canonicalPath(first.path) == canonicalPath(repo.path)
     }
 
@@ -549,9 +553,9 @@ final class DiffyStore: ObservableObject {
         var result: [RepositoryConfig] = []
         result.reserveCapacity(inGroup.count)
         for parent in orderedParents {
-            if includeHidden || !parent.isHidden {
-                result.append(parent)
-            }
+            // A hidden parent's children must not render as orphaned, indented rows.
+            guard includeHidden || !parent.isHidden else { continue }
+            result.append(parent)
             let children = repositories.filter { $0.parentRepositoryID == parent.id }
             result.append(contentsOf: includeHidden ? children : children.filter { !$0.isHidden })
         }
@@ -574,6 +578,14 @@ final class DiffyStore: ObservableObject {
     func clearWorktreeRemovalError() {
         lastWorktreeRemovalError = nil
         lastWorktreeRemovalRepositoryID = nil
+    }
+
+    func reportEditorError(_ message: String) {
+        lastEditorError = message
+    }
+
+    func clearEditorError() {
+        lastEditorError = nil
     }
 
     /// Confirmation text for worktree removal, shared by the settings sheet and the menu-bar popover.

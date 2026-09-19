@@ -16,6 +16,22 @@ struct PopoverContentView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            if let editorError = store.lastEditorError {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(editorError)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer()
+                    Button("Dismiss", action: store.clearEditorError)
+                        .buttonStyle(.borderless)
+                }
+                .font(.caption)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                Divider()
+            }
             content
             Divider()
             footer
@@ -314,7 +330,7 @@ private struct RepoBlock: View {
                     ForEach(files) { file in
                         ZStack {
                             Button {
-                                EditorLauncher.open(file: file, in: repository)
+                                EditorLauncher.open(file: file, in: repository, onError: store.reportEditorError)
                             } label: {
                                 CompactFileRow(
                                     file: file,
@@ -463,7 +479,7 @@ private struct RepoBlock: View {
                                     onCopyPath(file.path, repository)
                                 }
                                 Button("Open Current Version") {
-                                    EditorLauncher.openCurrentVersion(path: file.path, in: repository)
+                                    EditorLauncher.openCurrentVersion(path: file.path, in: repository, onError: store.reportEditorError)
                                 }
                                 .disabled(!EditorLauncher.currentVersionExists(path: file.path, in: repository))
                             }
