@@ -75,6 +75,13 @@ public struct GitProcessRunner: GitProcessRunning, Sendable {
             errorData.append(chunk)
         }
 
+        // Exit is observed via terminationHandler, which Foundation invokes on its own queue.
+        // Do NOT wait via waitUntilExit() on a Dispatch worker: it spins a run loop on a shared
+        // pool thread, loses wakeups when many repos refresh at once, and each miss parks that
+        // thread forever until the pool is exhausted and every later run times out.
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+
         do {
             try process.run()
         } catch {
@@ -84,13 +91,7 @@ public struct GitProcessRunner: GitProcessRunning, Sendable {
             throw error
         }
 
-        // waitUntilExit() blocks forever on a stalled child (dead mount, inherited pipes),
-        // which would permanently leak a cooperative-pool thread per stall.
-        let exited = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .utility).async {
-            process.waitUntilExit()
-            exited.signal()
-        }
+        // Bounded wait so a stalled child (dead mount, inherited pipes) can't pin the caller forever.
         if exited.wait(timeout: .now() + timeout) == .timedOut {
             outputPipe.fileHandleForReading.readabilityHandler = nil
             errorPipe.fileHandleForReading.readabilityHandler = nil
