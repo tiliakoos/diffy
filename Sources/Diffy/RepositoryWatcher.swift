@@ -41,9 +41,18 @@ final class RepositoryWatcher {
             return false
         }
 
-        stream = createdStream
         FSEventStreamSetDispatchQueue(createdStream, DispatchQueue.main)
-        return FSEventStreamStart(createdStream)
+        guard FSEventStreamStart(createdStream) else {
+            FSEventStreamInvalidate(createdStream)
+            FSEventStreamRelease(createdStream)
+            return false
+        }
+        stream = createdStream
+        return true
+    }
+
+    deinit {
+        stop()
     }
 
     func stop() {

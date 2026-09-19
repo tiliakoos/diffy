@@ -6,7 +6,7 @@ import DiffyCore
 
 @MainActor
 final class DiffyStoreBehaviorTests: XCTestCase {
-    func testVisibleChildRemainsOrderedWhenParentIsHidden() throws {
+    func testHiddenParentHidesItsChildrenFromVisibleOrdering() throws {
         let group = RepositoryGroup(name: "Group")
         let parent = RepositoryConfig(
             displayName: "parent",
@@ -26,7 +26,55 @@ final class DiffyStoreBehaviorTests: XCTestCase {
 
         store.load()
 
-        XCTAssertEqual(store.orderedRepositories(in: group.id, includeHidden: false).map(\.id), [child.id])
+        XCTAssertEqual(store.orderedRepositories(in: group.id, includeHidden: false).map(\.id), [])
+        XCTAssertEqual(store.orderedRepositories(in: group.id, includeHidden: true).map(\.id), [parent.id, child.id])
+    }
+
+    func testDuplicateRepositoryIDsInStateDoNotCrashOnStart() throws {
+        let group = RepositoryGroup(name: "Group")
+        let sharedID = UUID()
+        let first = RepositoryConfig(id: sharedID, displayName: "a", path: "/tmp/a", groupID: group.id)
+        let second = RepositoryConfig(id: sharedID, displayName: "b", path: "/tmp/b", groupID: group.id)
+        let storageURL = try writeState(groups: [group], repositories: [first, second])
+        let store = DiffyStore(storageURL: storageURL)
+        defer { store.stop() }
+
+        store.load()
+        store.start()
+
+        XCTAssertEqual(store.repositories.count, 2)
+    }
+
+    func testReorderGroupsToleratesDuplicateGroupIDs() throws {
+        let sharedID = UUID()
+        let first = RepositoryGroup(id: sharedID, name: "A")
+        let second = RepositoryGroup(id: sharedID, name: "B")
+        let storageURL = try writeState(groups: [first, second], repositories: [])
+        let store = DiffyStore(storageURL: storageURL)
+
+        store.load()
+        store.reorderGroups([sharedID])
+
+        XCTAssertEqual(store.groups.count, 2)
+    }
+
+    func testIsGitMainWorktreeFailsClosedWithoutCachedEntries() throws {
+        let group = RepositoryGroup(name: "Group")
+        let parent = RepositoryConfig(displayName: "parent", path: "/tmp/parent", groupID: group.id)
+        let child = RepositoryConfig(
+            displayName: "child",
+            path: "/tmp/child",
+            groupID: group.id,
+            parentRepositoryID: parent.id,
+            isAutoManaged: true
+        )
+        let storageURL = try writeState(groups: [group], repositories: [parent, child])
+        let store = DiffyStore(storageURL: storageURL)
+
+        store.load()
+
+        XCTAssertTrue(store.isGitMainWorktree(repositoryID: child.id))
+        XCTAssertFalse(store.isGitMainWorktree(repositoryID: parent.id))
     }
 
     func testHiddenChildStaysExcludedFromVisibleOrdering() throws {

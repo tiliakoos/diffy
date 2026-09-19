@@ -71,9 +71,11 @@ cp "$ROOT_DIR/Resources/THIRD_PARTY_NOTICES.txt" "$RESOURCES_DIR/THIRD_PARTY_NOT
 cp "$ROOT_DIR/Resources/SOURCE_CODE.md" "$RESOURCES_DIR/SOURCE_CODE.md"
 
 SPARKLE_FRAMEWORK="$(find "$ROOT_DIR/.build" -path '*/Sparkle.framework' -type d | head -n 1 || true)"
-if [[ -n "$SPARKLE_FRAMEWORK" ]]; then
-  ditto --norsrc "$SPARKLE_FRAMEWORK" "$FRAMEWORKS_DIR/Sparkle.framework"
+if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
+  echo "error: Sparkle.framework not found in build products; the binary links it and would crash on launch." >&2
+  exit 1
 fi
+ditto --norsrc "$SPARKLE_FRAMEWORK" "$FRAMEWORKS_DIR/Sparkle.framework"
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

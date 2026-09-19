@@ -66,6 +66,8 @@ struct RepositorySettingsView: View {
                     store.clearWorktreeRemovalError()
                     if case .command(let command) = repository.editor {
                         customCommand = command
+                    } else {
+                        customCommand = ""
                     }
                 }
                 .onDisappear {
@@ -107,7 +109,7 @@ struct RepositorySettingsView: View {
                 }
             } footer: {
                 if editorChoice(for: repository) == .custom {
-                    Text("Supports {path} and {repo} placeholders.")
+                    Text("Supports {path} and {repo} placeholders. Placeholders must appear unquoted.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
