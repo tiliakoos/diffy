@@ -55,6 +55,17 @@ final class GitParsingTests: XCTestCase {
         XCTAssertEqual(stats["Sources/Removed.swift"]?.removedLines, 8)
     }
 
+    func testParsesNumstatMergesDuplicateUnmergedPath() {
+        // Mid-conflict git emits a `0 0` record plus a combined-diff record for the same path.
+        let output = "0\t0\tSources/Conflicted.swift\u{0}4\t0\tSources/Conflicted.swift\u{0}"
+
+        let stats = GitNumstatParser.parse(output)
+
+        XCTAssertEqual(stats.count, 1)
+        XCTAssertEqual(stats["Sources/Conflicted.swift"]?.addedLines, 4)
+        XCTAssertEqual(stats["Sources/Conflicted.swift"]?.removedLines, 0)
+    }
+
     func testParsesNumstatForUnicodeFilenames() {
         let output = "4\t2\tSources/мир.swift\u{0}1\t0\tassets/🚀.png\u{0}"
 

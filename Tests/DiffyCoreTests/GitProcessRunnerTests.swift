@@ -25,4 +25,27 @@ final class GitProcessRunnerTests: XCTestCase {
             XCTFail("Expected GitClientError.commandFailed, got \(error)")
         }
     }
+
+    func testRunTimesOutOnStalledProcess() {
+        let command = GitCommand(executable: "/bin/sleep", arguments: ["60"])
+        let start = Date()
+        do {
+            _ = try GitProcessRunner(timeout: 0.2).run(command)
+            XCTFail("Expected commandFailed error")
+        } catch let GitClientError.commandFailed(message) {
+            XCTAssertTrue(message.contains("timed out"), "Unexpected message: \(message)")
+            XCTAssertLessThan(Date().timeIntervalSince(start), 10)
+        } catch {
+            XCTFail("Expected GitClientError.commandFailed, got \(error)")
+        }
+    }
+
+    func testRunDecodesInvalidUTF8Lossily() throws {
+        let command = GitCommand(
+            executable: "/bin/sh",
+            arguments: ["-c", "printf 'a\\351b\\n'"]
+        )
+        let output = try GitProcessRunner().run(command)
+        XCTAssertEqual(output, "a\u{FFFD}b\n")
+    }
 }
