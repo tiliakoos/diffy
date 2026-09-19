@@ -10,9 +10,9 @@ Diffy is local-only. It does not use GitHub, GitLab, Bitbucket, PRs, issues, clo
 
 ## Status
 
-v0.9.5 — available via Homebrew Cask. The app uses macOS 26 APIs (with an optional Apple Glass appearance) and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
+v0.9.6 — available via Homebrew Cask. The app uses macOS 26 APIs (with an optional Apple Glass appearance) and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
 
-This release fixes a batch of reliability and correctness bugs: lossy UTF-8 git output (repos with non-ASCII paths no longer show as clean), custom editor command safety and error surfacing, popover ordering for hidden parents, first-launch window placement, worktree watcher leaks, release packaging when Sparkle is missing, and related edge cases from the recent audit.
+This release fixes a regression introduced in v0.9.5 where every repository reported "git command timed out after 30s": the git subprocess wait leaked a Dispatch worker thread per call until the pool was exhausted. Exit is now observed via `terminationHandler`; the bounded timeout is kept.
 
 Diffy remains focused on its original local-only, menu-bar-first scope.
 
