@@ -1,9 +1,10 @@
 # Source Code
 
-Diffy is licensed under the MIT License. Before publishing a Diffy binary
-release, publish the matching source at
-https://github.com/tiliakoos/diffy using a Git tag matching the app version
-(for example, `v0.7.0`) or attach the matching source archive to the release.
+Diffy is licensed under the MIT License. The copyright and permission notices
+are in `LICENSE` alongside this file.
 
-Build instructions and the exact Sparkle dependency revision are in the
-matching source tree's `README.md`, `Package.swift`, and `Package.resolved`.
+Source is published at https://github.com/tiliakoos/diffy. Official releases
+are tagged to match the app version (for example, `v0.7.0`).
+
+Build instructions and the Sparkle dependency revision are in the repository's
+`README.md`, `Package.swift`, and `Package.resolved`.
