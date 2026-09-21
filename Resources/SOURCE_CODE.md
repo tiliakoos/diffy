@@ -1,6 +1,7 @@
-# Corresponding Source Code
+# Source Code
 
-Before publishing a Diffy binary release, publish its corresponding source at
+Diffy is licensed under the MIT License. Before publishing a Diffy binary
+release, publish the matching source at
 https://github.com/tiliakoos/diffy using a Git tag matching the app version
 (for example, `v0.7.0`) or attach the matching source archive to the release.
 

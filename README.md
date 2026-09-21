@@ -92,7 +92,7 @@ Diffy includes Sparkle integration, but update checks are enabled only in releas
 
 Copyright (C) 2026 Nick Tiliakos.
 
-Diffy is free software licensed under the GNU General Public License, version 3 only. You may redistribute and modify it under the terms in [LICENSE](LICENSE).
+Diffy is licensed under the MIT License. You may use, copy, modify, and distribute it under the terms in [LICENSE](LICENSE).
 
 Released app bundles include `LICENSE`, `THIRD_PARTY_NOTICES.txt`, and `SOURCE_CODE.md` in `Diffy.app/Contents/Resources`.
 
