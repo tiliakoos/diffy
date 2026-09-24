@@ -8,9 +8,7 @@ struct PopoverContentView: View {
     let onOpenWindow: () -> Void
     let onClose: () -> Void
 
-    @State private var contentHeight: CGFloat = 0
     @State private var copiedKey: String?
-    private let bodyCap: CGFloat = 520
 
     var body: some View {
         VStack(spacing: 0) {
@@ -130,13 +128,9 @@ struct PopoverContentView: View {
                     }
                 }
                 .padding(12)
-                .onGeometryChange(for: CGFloat.self) { proxy in
-                    proxy.size.height
-                } action: { newHeight in
-                    contentHeight = newHeight
-                }
             }
-            .frame(height: contentHeight == 0 ? nil : min(contentHeight, bodyCap))
+            .frame(maxHeight: 520)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
