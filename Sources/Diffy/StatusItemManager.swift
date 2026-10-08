@@ -26,6 +26,14 @@ final class StatusItemManager: NSObject {
                 self?.update(groups: groups, repositories: repositories, summaries: summaries)
             }
             .store(in: &cancellables)
+
+        // The badge style follows the interface setting, which the store knows nothing about.
+        NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.update(groups: self.store.groups, repositories: self.store.repositories, summaries: self.store.summaries)
+            }
+            .store(in: &cancellables)
     }
 
     private func update(
@@ -63,6 +71,7 @@ final class StatusItemManager: NSObject {
             groupOrder = desiredOrder
         }
 
+        let interface = Interface.current
         for group in groups {
             guard var item = items[group.id] else { continue }
             let visibleRepos = repositories.filter { $0.groupID == group.id && !$0.isHidden }
@@ -86,7 +95,8 @@ final class StatusItemManager: NSObject {
                 visibleRepoCount: visibleRepos.count,
                 colors: group.diffColors,
                 badgeLabel: group.badgeLabel,
-                errorCount: errorCount
+                errorCount: errorCount,
+                interface: interface
             )
 
             if item.lastBadgeState != newState {
@@ -97,7 +107,8 @@ final class StatusItemManager: NSObject {
                         removed: removed,
                         colors: group.diffColors,
                         badgeLabel: group.badgeLabel,
-                        hasError: hasError
+                        hasError: hasError,
+                        interface: interface
                     )
                     button.imagePosition = .imageOnly
                     var tip = "\(displayName) — \(visibleRepos.count) visible \(visibleRepos.count == 1 ? "repo" : "repos")"
@@ -105,6 +116,8 @@ final class StatusItemManager: NSObject {
                         tip += " (\(errorCount) with errors)"
                     }
                     button.toolTip = tip
+                    let counts = added == 0 && removed == 0 ? "no changes" : "\(added) lines added, \(removed) removed"
+                    button.setAccessibilityLabel("\(displayName), \(counts)" + (hasError ? ", \(errorCount) with errors" : ""))
                 }
                 item.lastBadgeState = newState
                 items[group.id] = item
@@ -117,7 +130,7 @@ final class StatusItemManager: NSObject {
         let popover = NSPopover()
         popover.behavior = .transient
         let hosting = NSHostingController(
-            rootView: PopoverContentView(
+            rootView: PopoverRootView(
                 store: store,
                 groupID: group.id,
                 onOpenWindow: { [weak self, weak popover] in
@@ -156,7 +169,7 @@ final class StatusItemManager: NSObject {
         }
 
         if event.type == .rightMouseUp {
-            showContextMenu(for: item)
+            showContextMenu(for: item, groupID: groupID)
         } else {
             togglePopover(groupID: groupID, item: item)
         }
@@ -177,12 +190,21 @@ final class StatusItemManager: NSObject {
         }
     }
 
-    private func showContextMenu(for item: GroupStatusItem) {
+    private func showContextMenu(for item: GroupStatusItem, groupID: UUID) {
         let menu = NSMenu()
-        let open = menu.addItem(withTitle: "Open Diffy", action: #selector(menuOpen), keyEquivalent: "")
+        let open = menu.addItem(withTitle: "Open Diffy", action: #selector(menuOpen), keyEquivalent: "o")
         open.target = self
         let settings = menu.addItem(withTitle: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
+        menu.addItem(NSMenuItem.separator())
+        let name = store.groups.first { $0.id == groupID }?.name ?? ""
+        let hide = menu.addItem(
+            withTitle: "Hide \u{201C}\(name.isEmpty ? "Diffy" : name)\u{201D} from Menu Bar",
+            action: #selector(menuHide(_:)),
+            keyEquivalent: ""
+        )
+        hide.target = self
+        hide.representedObject = groupID
         menu.addItem(NSMenuItem.separator())
         let quit = menu.addItem(withTitle: "Quit Diffy", action: #selector(menuQuit), keyEquivalent: "q")
         quit.target = self
@@ -193,6 +215,11 @@ final class StatusItemManager: NSObject {
 
     @objc private func menuOpen() {
         onOpenWindow()
+    }
+
+    @objc private func menuHide(_ sender: NSMenuItem) {
+        guard let groupID = sender.representedObject as? UUID else { return }
+        store.setGroupHidden(groupID, isHidden: true)
     }
 
     @objc private func menuSettings() {
@@ -254,6 +281,7 @@ struct BadgeState: Equatable {
     let colors: DiffColors
     let badgeLabel: BadgeLabel?
     let errorCount: Int
+    let interface: Interface
 }
 
 @MainActor

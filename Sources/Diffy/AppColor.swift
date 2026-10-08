@@ -1,5 +1,18 @@
 import AppKit
+import DiffyCore
 import SwiftUI
+
+extension DiffColors {
+    /// System green and red unless the group customized its colors; the system ones adapt to
+    /// dark mode and Increase Contrast, fixed hex values don't.
+    var additionColor: Color {
+        self == .default ? .green : AppColor.swiftUIColor(hex: additionHex)
+    }
+
+    var removalColor: Color {
+        self == .default ? .red : AppColor.swiftUIColor(hex: removalHex)
+    }
+}
 
 enum AppColor {
     static func swiftUIColor(hex: String) -> Color {

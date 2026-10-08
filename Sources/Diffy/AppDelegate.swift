@@ -33,6 +33,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Reopening from the Dock, Finder or Spotlight shows the window — the only way back in
+    /// when every group is hidden from the menu bar.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        mainWindowController?.show()
+        return false
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         store.stop()
     }

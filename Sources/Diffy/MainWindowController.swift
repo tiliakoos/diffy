@@ -13,13 +13,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Manage Diffy"
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 880, height: 560)
-        let glass = Self.currentAppearanceMode() == .appleGlass
-        window.isOpaque = !glass
-        window.backgroundColor = glass ? .clear : .windowBackgroundColor
         _ = window.setFrameAutosaveName("DiffyMainWindow.v2")
         // setFrameAutosaveName returns whether the name was set, not whether a saved frame
         // existed — setFrameUsingName is the real "restored" signal for the fallback.
@@ -32,11 +28,11 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.delegate = self
-        let onAppearanceModeChange: (AppearanceMode) -> Void = { [weak self] mode in
-            self?.applyWindowTranslucency(for: mode)
-        }
+        applyPresentation(mode: Self.currentAppearanceMode(), interface: Interface.current)
         window.contentViewController = NSHostingController(
-            rootView: MainView(store: store, onAppearanceModeChange: onAppearanceModeChange)
+            rootView: MainRootView(store: store) { [weak self] mode, interface in
+                self?.applyPresentation(mode: mode, interface: interface)
+            }
         )
     }
 
@@ -45,10 +41,12 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         return AppearanceMode(rawValue: raw) ?? .standard
     }
 
-    private func applyWindowTranslucency(for mode: AppearanceMode) {
-        let glass = mode == .appleGlass
+    /// Glass exists only in the classic interface; the modern window is always opaque.
+    private func applyPresentation(mode: AppearanceMode, interface: Interface) {
+        let glass = interface == .classic && mode == .appleGlass
         window.isOpaque = !glass
         window.backgroundColor = glass ? .clear : .windowBackgroundColor
+        window.title = interface == .modern ? "Diffy" : "Manage Diffy"
         window.invalidateShadow()
     }
 

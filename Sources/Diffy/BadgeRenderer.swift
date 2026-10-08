@@ -7,7 +7,101 @@ enum BadgeRenderer {
         removed: Int,
         colors: DiffColors,
         badgeLabel: BadgeLabel? = nil,
-        hasError: Bool = false
+        hasError: Bool = false,
+        interface: Interface = .modern
+    ) -> NSImage {
+        switch interface {
+        case .modern:
+            modernImage(added: added, removed: removed, colors: colors, badgeLabel: badgeLabel, hasError: hasError)
+        case .classic:
+            classicImage(added: added, removed: removed, colors: colors, badgeLabel: badgeLabel, hasError: hasError)
+        }
+    }
+
+    /// Grouped below 10,000; above, one decimal and a "k" so the item stays narrow.
+    static func countText(_ count: Int) -> String {
+        if count < 10_000 {
+            return count.formatted(.number)
+        }
+        return (Double(count) / 1000).formatted(.number.precision(.fractionLength(0...1))) + "k"
+    }
+
+    /// `+1,108 −170` with a true minus and no slash; the ± mark alone when clean. Colors are
+    /// dynamic system green and red unless the group customized them, and the image is drawn
+    /// through a handler so it re-renders for the menu bar's current appearance.
+    private static func modernImage(
+        added: Int,
+        removed: Int,
+        colors: DiffColors,
+        badgeLabel: BadgeLabel?,
+        hasError: Bool
+    ) -> NSImage {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
+        let labelFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        let additionColor = colors == .default ? NSColor.systemGreen : AppColor.nsColor(hex: colors.additionHex) ?? .systemGreen
+        let removalColor = colors == .default ? NSColor.systemRed : AppColor.nsColor(hex: colors.removalHex) ?? .systemRed
+
+        let text = NSMutableAttributedString()
+        let label = badgeLabel?.text.trimmingCharacters(in: .whitespaces) ?? ""
+        let labelText = NSAttributedString(
+            string: label,
+            attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: labelFont]
+        )
+        let space = NSAttributedString(string: " ", attributes: [.font: font])
+
+        if !label.isEmpty, badgeLabel?.position != .trailing {
+            text.append(labelText)
+            text.append(space)
+        }
+
+        if added == 0, removed == 0, !hasError {
+            text.append(symbolAttachment("plusminus", color: .labelColor, font: font))
+        } else {
+            text.append(NSAttributedString(string: "+\(countText(added))", attributes: [.foregroundColor: additionColor, .font: font]))
+            text.append(space)
+            text.append(NSAttributedString(string: "\u{2212}\(countText(removed))", attributes: [.foregroundColor: removalColor, .font: font]))
+        }
+
+        if hasError {
+            text.append(space)
+            text.append(symbolAttachment("exclamationmark.triangle.fill", color: .systemOrange, font: font))
+        }
+
+        if !label.isEmpty, badgeLabel?.position == .trailing {
+            text.append(space)
+            text.append(labelText)
+        }
+
+        let textSize = text.size()
+        let size = NSSize(width: ceil(textSize.width) + 2, height: max(18, ceil(textSize.height)))
+        let drawn = NSAttributedString(attributedString: text)
+        let image = NSImage(size: size, flipped: false) { rect in
+            drawn.draw(at: NSPoint(x: 1, y: floor((rect.height - textSize.height) / 2)))
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    private static func symbolAttachment(_ name: String, color: NSColor, font: NSFont) -> NSAttributedString {
+        let configuration = NSImage.SymbolConfiguration(paletteColors: [color])
+            .applying(NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .semibold))
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
+        else { return NSAttributedString() }
+        let attachment = NSTextAttachment()
+        attachment.image = symbol
+        let yOffset = (font.capHeight - symbol.size.height) / 2
+        attachment.bounds = CGRect(x: 0, y: yOffset, width: symbol.size.width, height: symbol.size.height)
+        return NSAttributedString(attachment: attachment)
+    }
+
+    private static func classicImage(
+        added: Int,
+        removed: Int,
+        colors: DiffColors,
+        badgeLabel: BadgeLabel?,
+        hasError: Bool
     ) -> NSImage {
         let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
         let additionColor = AppColor.nsColor(hex: colors.additionHex) ?? .systemGreen
