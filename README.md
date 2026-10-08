@@ -10,39 +10,40 @@ Diffy is local-only. It does not use GitHub, GitLab, Bitbucket, PRs, issues, clo
 
 ## Status
 
-v0.9.6 — available via Homebrew Cask. The app uses macOS 26 APIs (with an optional Apple Glass appearance) and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
+v0.10.0 — available via Homebrew Cask. The app uses macOS 26 APIs and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
 
-This release fixes a regression introduced in v0.9.5 where every repository reported "git command timed out after 30s": the git subprocess wait leaked a Dispatch worker thread per call until the pool was exhausted. Exit is now observed via `terminationHandler`; the bounded timeout is kept.
+This release is the interface refresh: a menu-bar badge that carries each group's colour, a narrower popover built like Apple's own menu extras, and a window with a system sidebar and an inline inspector. The previous interface stays available behind Settings → Interface → Classic while the new one settles. The release also fixes a freeze on repositories with thousands of changed files: the popover now shows file lists a page at a time.
 
 Diffy remains focused on its original local-only, menu-bar-first scope.
 
 ## Features
 
-- **Groups**: every repo belongs to a group, and each group owns one menu-bar icon, one color scheme, and an optional small label (1–2 chars or an emoji, positioned around the `+/-` counts). When adding a repo, choose an existing group or create a new one. A group with N repos shows the aggregate `+x / -y` of its (non-hidden) members.
-- **Manage Diffy**: the occasional configuration window has a simple group navigator (drag-to-reorder, live `+/-`, context menu for show/hide and remove) and an inspector for group names, colours, labels, menu-bar visibility, and repositories. Per-repository settings open in a sheet (group assignment, editor choice, commit history limit, total inclusion, safe removal); repo rows also have a context menu for settings, copy path, and count toggle. App settings (Launch at Login, updates, version) live in Settings (Cmd+,).
-- **Hide a group from the menu bar** from its inspector or sidebar context menu — the icon disappears entirely until toggled back on. Per-repo "Count toward group totals" is also available for silencing a noisy repo within a multi-repo group without removing the icon.
-- Left-click any group's menu-bar icon opens a popover listing **that group's** repos as card-separated blocks with capsule upstream-status badges — click a file to jump straight into your editor, or right-click it to copy its full path. Clean repos show a "Working tree clean" state. Esc closes the popover. "See all groups" opens the full main window.
-- Expand **Recent commits** under any repository to see its last 1–20 commits (configured per repository), including short SHA, subject, time, and whether each commit is on the configured upstream, local only, or has no upstream. Expanding a commit shows file statuses and `+/-` totals without source-code hunks. Commit rows support Copy SHA and Copy Subject via context menu; historical file rows can copy the path or explicitly open the current working-tree version when it exists.
-- Window close hides Diffy back to the menu bar (no quit); ⌘Q or right-click the menu-bar icon → Quit to actually exit. The status-item context menu also has Open Diffy, Settings…, and Quit.
-- **Branch labels** appear in the popover and the repository manager. Detached HEAD shows the short SHA in italics.
-- **Linked worktrees** discovered automatically from `git worktree list --porcelain` and shown as indented sub-rows under one family owner, each with their own diff stats and branch. Manually-added worktrees stay as top-level rows and are never duplicated under a sibling; the first manual row in a family owns only unadded siblings. Per-worktree "Count toward group totals" works like any other repo. Remove a finished auto-managed worktree from inside Diffy via a confirmation dialog — Diffy never uses `--force`, so dirty worktrees must be handled in your terminal first.
+- **Groups**: every repo belongs to a group, and each group owns one menu-bar item, one colour, its own diff colours, and an optional small label (1–2 characters or an emoji, before or after the counts). A group shows the aggregate `+x / −y` of its counted members, `±` when everything is clean, counts above 9,999 as `10k`, and a warning triangle when a repository can't be read. The group's colour draws a pill behind the counts, so several groups stay apart at a glance.
+- **Popover**: left-click a group's menu-bar item for a 340 pt popover scoped to that group. The header has the totals, a green/red ratio bar, branch, file count and refresh time; below it, **Changes** or **History**. File rows put the name first and the folder dimmed, with the status tile and `+a −b` at the right. Click a row to open the file in your editor, hover for Reveal in Finder and Copy Path, or right-click for the same. A group with several repositories shows each on its own platter with its four largest files and a "Show 50 more" row that pages through the rest; the ⋯ menu offers Reveal in Finder, Copy Path, Copy Branch Name and Remove Worktree…. The footer has Add Repository… and Open Diffy (⌘O). Esc closes.
+- **History**: each repository's last 1–20 commits (set per repository) with short SHA, subject, age, and whether the commit is on the configured upstream, local only, or has no upstream. Expanding a commit shows file statuses and `+/-` totals, never source hunks. Commit rows offer Copy SHA and Copy Subject; historical file rows can copy the path or open the current working-tree version when it exists.
+- **Diffy window**: the occasional configuration window has a sidebar of groups (coloured tile, live counts, drag to reorder, context menu to hide, show or remove, New Group at the foot) and an inspector with a live preview of the menu-bar badge, the Show in menu bar toggle, label and position, group colour and diff colours edited inline, and the group's repositories with branch, path and status. ⓘ on a repository opens its settings sheet (group, editor, commit history limit, count in totals, safe removal). Removing a group asks whether its repositories stay in Diffy as separate groups or go with it. The toolbar + (⌘O) adds a repository. App settings (Interface, Open at Login, updates, version) live in Settings (⌘,).
+- **Adding a repository** is one step: the open panel has an "Add to" menu for a new group or an existing one, whether you start from the popover or the window.
+- **Hide a group from the menu bar** from its inspector, the sidebar context menu, or by right-clicking its menu-bar item; the item disappears until toggled back on. Per-repository "Count in totals" silences a noisy repo within a group without removing the item.
+- The menu-bar item's right-click menu has Open Diffy, Settings…, Hide "group" from Menu Bar, and Quit Diffy. Closing the window hides Diffy back to the menu bar; opening Diffy again from the Dock, Finder or Spotlight shows it, which is also the way back in when every group is hidden. ⌘Q quits.
+- **Branch labels** appear in the popover and the window. Detached HEAD shows the short SHA.
+- **Linked worktrees** discovered automatically from `git worktree list --porcelain` and shown indented under their family owner, each with its own diff stats and branch. Manually-added worktrees stay as top-level rows and are never duplicated under a sibling. Remove a finished auto-managed worktree from the popover's ⋯ menu or the settings sheet via a confirmation dialog; Diffy never uses `--force`, so dirty worktrees must be handled in your terminal first.
 - Open changed files in a configured editor (Xcode, Cursor, VS Code, Zed, or a custom shell command). Deleted-file rows are shown for context but are not opened from the working tree.
-- **Standard / Apple Glass appearance**: the default is a solid opaque window (Standard). Settings → Appearance lets you switch to **Apple Glass**, where the main window shows the desktop through real glass and popover repo cards use the same material; a Frosted/Clear style picker and an opacity slider (with a legibility floor) become available, and changes apply live and persist. macOS's Reduce Transparency setting overrides glass with an opaque look, as expected.
+- **Classic interface**: Settings → Interface → Classic brings back the 0.9.6 look, including the Standard / Apple Glass appearance setting, until the new interface is settled. The switch is temporary.
 - **Launch at Login** toggle in Settings (requires Diffy installed to `/Applications`).
 - Filesystem-triggered refresh with polling fallback.
 - Homebrew updates today, with Sparkle packaged behind release metadata for a future appcast.
 
 ## Screenshots
 
-At a glance, Diffy lives in the menu bar and shows the current group's aggregate working-tree diff.
+At a glance, Diffy lives in the menu bar: one pill per group in the group's colour, with its aggregate working-tree diff.
 
-![Diffy menu-bar item showing aggregate diff counts](assets/readme/menu-bar-status.png)
+![Diffy menu-bar items showing three groups' diff counts](assets/readme/menu-bar-status.png)
 
-Diffy's main window is an occasional management surface for groups, repositories, and menu-bar appearance.
+Diffy's window is an occasional management surface for groups, repositories, and the menu-bar badge.
 
-![Diffy group management window](assets/readme/main-window-groups.png)
+![Diffy window](assets/readme/main-window-groups.png)
 
-The menu-bar popover breaks a group down by worktree, branch, changed file, status, and per-file diff counts.
+The menu-bar popover breaks a group down by repository, branch, changed file, status, and per-file diff counts.
 
 ![Diffy menu-bar popover showing per-file diff breakdowns](assets/readme/menu-bar-breakdown.png)
 
