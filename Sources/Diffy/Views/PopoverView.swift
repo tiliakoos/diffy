@@ -16,11 +16,15 @@ struct PopoverView: View {
     }
 
     @State private var segment: Segment = .changes
-    @State private var expandedRepositoryIDs: Set<UUID> = []
+    @State private var shownFileLimits: [UUID: Int] = [:]
     @State private var copiedKey: String?
     @State private var pendingWorktreeRemoval: UUID?
 
     private static let previewFileCount = 4
+    /// Rows added per "Show more". Every row on screen is laid out at once on the main thread
+    /// when the popover opens or resizes, so this cap is what keeps a change with thousands of
+    /// files from freezing the app.
+    private static let pageSize = 50
 
     var body: some View {
         VStack(spacing: 0) {
@@ -233,8 +237,9 @@ struct PopoverView: View {
                     unavailable("Working Tree Clean", symbol: "checkmark.circle",
                                 message: "Everything matches the last commit. History is one click away.")
                 } else {
-                    fileSection("Staged", files: summary.stagedFiles, in: single)
-                    fileSection("Unstaged", files: summary.unstagedFiles, in: single)
+                    fileSections(for: summary, in: single)
+                    pagingRow(for: single, total: summary.stagedFiles.count + summary.unstagedFiles.count)
+                        .padding(.horizontal, 6)
                 }
             } else {
                 checking
@@ -273,16 +278,57 @@ struct PopoverView: View {
         .padding(.vertical, 14)
     }
 
+    /// Staged then unstaged, never more rows in total than the repository's current limit.
     @ViewBuilder
-    private func fileSection(_ title: String, files: [ChangedFileSummary], in repository: RepositoryConfig) -> some View {
-        if !files.isEmpty {
+    private func fileSections(for summary: RepoDiffSummary, in repository: RepositoryConfig) -> some View {
+        let limit = shownLimit(for: repository)
+        fileSection("Staged", files: summary.stagedFiles, limit: limit, in: repository)
+        fileSection("Unstaged", files: summary.unstagedFiles, limit: limit - summary.stagedFiles.count, in: repository)
+    }
+
+    @ViewBuilder
+    private func fileSection(_ title: String, files: [ChangedFileSummary], limit: Int, in repository: RepositoryConfig) -> some View {
+        if !files.isEmpty, limit > 0 {
             SectionHeader(title: title, fileCount: files.count)
             VStack(spacing: 0) {
-                ForEach(files) { file in
+                ForEach(files.prefix(limit)) { file in
                     fileRow(file, in: repository)
                 }
             }
             .padding(.horizontal, 6)
+        }
+    }
+
+    /// A page of rows, or the four largest files while a group's platter is collapsed.
+    private func shownLimit(for repository: RepositoryConfig) -> Int {
+        shownFileLimits[repository.id] ?? (singleRepository == nil ? Self.previewFileCount : Self.pageSize)
+    }
+
+    @ViewBuilder
+    private func pagingRow(for repository: RepositoryConfig, total: Int) -> some View {
+        let shown = min(shownLimit(for: repository), total)
+        let remaining = total - shown
+        let isPaged = shownFileLimits[repository.id] != nil
+        if remaining > 0 || isPaged {
+            HStack {
+                if remaining > 0 {
+                    let page = min(Self.pageSize, remaining)
+                    DisclosureRow(
+                        title: remaining > page ? "Show \(page) more of \(remaining.formatted(.number)) files" : "Show \(page) more files",
+                        isExpanded: false
+                    ) {
+                        // Not animated: the popover resizes to the content's ideal size, and an
+                        // animated layout re-sizes it every frame, which stutters and jumps.
+                        shownFileLimits[repository.id] = shown + Self.pageSize
+                    }
+                }
+                Spacer()
+                if isPaged {
+                    DisclosureRow(title: "Show fewer", isExpanded: true) {
+                        shownFileLimits[repository.id] = nil
+                    }
+                }
+            }
         }
     }
 
@@ -303,7 +349,6 @@ struct PopoverView: View {
     private func repositoryPlatter(_ repository: RepositoryConfig) -> some View {
         let summary = store.summaries[repository.id]
         let files = (summary?.stagedFiles ?? []) + (summary?.unstagedFiles ?? [])
-        let isExpanded = expandedRepositoryIDs.contains(repository.id)
 
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -345,9 +390,8 @@ struct PopoverView: View {
             } else if summary == nil {
                 checking
             } else if !files.isEmpty {
-                if isExpanded {
-                    fileSection("Staged", files: summary?.stagedFiles ?? [], in: repository)
-                    fileSection("Unstaged", files: summary?.unstagedFiles ?? [], in: repository)
+                if let summary, shownFileLimits[repository.id] != nil {
+                    fileSections(for: summary, in: repository)
                 } else {
                     VStack(spacing: 0) {
                         ForEach(largest(files)) { file in
@@ -357,21 +401,8 @@ struct PopoverView: View {
                     .padding(.horizontal, 2)
                     .padding(.top, 4)
                 }
-                if files.count > Self.previewFileCount {
-                    DisclosureRow(
-                        title: isExpanded ? "Show fewer" : "Show \(files.count - Self.previewFileCount) more files",
-                        isExpanded: isExpanded
-                    ) {
-                        // Not animated: the popover resizes to the content's ideal size, and an
-                        // animated layout re-sizes it every frame, which stutters and jumps.
-                        if isExpanded {
-                            expandedRepositoryIDs.remove(repository.id)
-                        } else {
-                            expandedRepositoryIDs.insert(repository.id)
-                        }
-                    }
+                pagingRow(for: repository, total: files.count)
                     .padding(.horizontal, 2)
-                }
             }
 
             if store.lastWorktreeRemovalRepositoryID == repository.id, let error = store.lastWorktreeRemovalError {
