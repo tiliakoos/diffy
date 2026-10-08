@@ -351,37 +351,55 @@ struct PopoverView: View {
         let files = (summary?.stagedFiles ?? []) + (summary?.unstagedFiles ?? [])
 
         VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
+            // Name and ⋯ on top, details and counts underneath. On one row, big counts left a
+            // worktree's details so little room that they wrapped mid-word.
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 8) {
                     Text(repository.displayName)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
+                        .help(repository.displayName)
+                    Spacer(minLength: 8)
+                    repositoryMenu(repository, branch: summary?.branch)
+                        .padding(.vertical, -4) // keeps the 22 pt hit area without growing the line
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     HStack(spacing: 4) {
                         if repository.isAutoManaged {
                             Label("worktree", systemImage: "arrow.turn.down.right")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Text("·").font(.caption2).foregroundStyle(.tertiary)
+                                .layoutPriority(1)
                         }
-                        BranchSubtitle(branch: summary?.branch)
+                        if let branch = distinctBranch(summary?.branch, for: repository) {
+                            if repository.isAutoManaged {
+                                Text("·").foregroundStyle(.tertiary)
+                            }
+                            BranchSubtitle(branch: branch)
+                        }
                         if !files.isEmpty {
                             Text("· ^[\(files.count) file](inflect: true)")
-                                .font(.caption2)
+                                .layoutPriority(1)
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    Spacer(minLength: 8)
+                    if let summary, summary.errorMessage == nil {
+                        if files.isEmpty {
+                            Label("No changes", systemImage: "checkmark.circle")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .fixedSize()
+                        } else {
+                            FileCounts(
+                                added: summary.addedLines,
+                                removed: summary.removedLines,
+                                isBinary: files.allSatisfy(\.isBinary),
+                                colors: colors
+                            )
                         }
                     }
                 }
-                Spacer(minLength: 8)
-                if let summary, summary.errorMessage == nil {
-                    if files.isEmpty {
-                        Label("No changes", systemImage: "checkmark.circle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        FileCounts(added: summary.addedLines, removed: summary.removedLines, isBinary: false, colors: colors)
-                    }
-                }
-                repositoryMenu(repository, branch: summary?.branch)
             }
             .padding(.horizontal, 10)
 

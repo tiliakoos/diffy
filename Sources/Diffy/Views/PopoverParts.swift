@@ -95,18 +95,22 @@ struct FileCounts: View {
     let colors: DiffColors
 
     var body: some View {
-        if isBinary {
-            Text("Binary").font(.caption).foregroundStyle(.secondary)
-        } else if isTooLarge {
-            Text("Large").font(.caption).foregroundStyle(.secondary)
-        } else {
-            HStack(spacing: 5) {
-                Text("+\(added.formatted(.number))").foregroundStyle(colors.additionColor)
-                Text("\u{2212}\(removed.formatted(.number))").foregroundStyle(colors.removalColor)
+        Group {
+            if isBinary {
+                Text("Binary").font(.caption).foregroundStyle(.secondary)
+            } else if isTooLarge {
+                Text("Large").font(.caption).foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 5) {
+                    Text("+\(added.formatted(.number))").foregroundStyle(colors.additionColor)
+                    Text("\u{2212}\(removed.formatted(.number))").foregroundStyle(colors.removalColor)
+                }
+                .font(.caption)
+                .monospacedDigit()
             }
-            .font(.caption)
-            .monospacedDigit()
         }
+        // Counts never wrap or truncate; the text beside them gives way instead.
+        .fixedSize()
     }
 }
 
@@ -120,6 +124,7 @@ struct ChangeRowLabel<Trailing: View>: View {
         HStack(spacing: 7) {
             Text((path as NSString).lastPathComponent)
                 .lineLimit(1)
+                .layoutPriority(1) // name first: the folder truncates before the file name does
             let folder = (path as NSString).deletingLastPathComponent
             if !folder.isEmpty {
                 Text(folder)
@@ -215,6 +220,19 @@ struct CopiedLabel: View {
 /// Key under which a file row shows "Copied"; the popover sets it and the history section reads it.
 func fileCopiedKey(_ relativePath: String, in repository: RepositoryConfig) -> String {
     "file:\(repository.id.uuidString):\(relativePath)"
+}
+
+/// The branch worth showing under a repository's name: nil when it's unknown, or when the row is
+/// already named after it, as every auto-discovered worktree on a branch is.
+func distinctBranch(_ branch: BranchInfo?, for repository: RepositoryConfig) -> BranchInfo? {
+    switch branch {
+    case .branch(let name)? where name == repository.displayName:
+        nil
+    case .unknown?:
+        nil
+    default:
+        branch
+    }
 }
 
 /// Footer row styled like the bottom rows of Apple's menu extras ("Wi‑Fi Settings…").

@@ -40,16 +40,19 @@ struct HistorySection: View {
         }
     }
 
+    /// Same shape as the Changes platter: the name on its own line, branch and status underneath.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(repository.displayName)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                BranchSubtitle(branch: store.summaries[repository.id]?.branch)
+        VStack(alignment: .leading, spacing: 1) {
+            Text(repository.displayName)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .help(repository.displayName)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                BranchSubtitle(branch: distinctBranch(store.summaries[repository.id]?.branch, for: repository))
+                Spacer(minLength: 8)
+                publicationSummary
+                    .fixedSize()
             }
-            Spacer(minLength: 8)
-            publicationSummary
         }
         .padding(.bottom, 2)
     }
