@@ -68,9 +68,9 @@ struct GroupInspector: View {
                             ColorPicker("Group color", selection: tileColorBinding(for: group))
                                 .labelsHidden()
                             Button("Automatic") {
-                                store.updateGroupColor(groupID, colorHex: nil)
+                                updateColors(of: group) { $0.badgeBackgroundHex = nil }
                             }
-                            .disabled(group.colorHex == nil)
+                            .disabled(group.diffColors.badgeBackgroundHex == nil)
                         }
                     }
                     LabeledContent("Diff colors") {
@@ -82,15 +82,18 @@ struct GroupInspector: View {
                                 .labelsHidden()
                                 .help("Removal color")
                             Button("System") {
-                                store.updateGroupColors(groupID, diffColors: .default)
+                                updateColors(of: group) {
+                                    $0.additionHex = DiffColors.default.additionHex
+                                    $0.removalHex = DiffColors.default.removalHex
+                                }
                             }
-                            .disabled(group.diffColors == .default)
+                            .disabled(group.diffColors.hasSystemDiffColors)
                         }
                     }
                 } header: {
                     Text("Menu Bar")
                 } footer: {
-                    Text("Up to two characters or one emoji for the label. System diff colors adapt to dark mode; custom ones don't.")
+                    Text("Up to two characters or one emoji for the label. The color draws a pill behind the counts; Automatic means no pill. System diff colors adapt to dark mode; custom ones don't.")
                 }
 
                 Section {
@@ -210,9 +213,9 @@ struct GroupInspector: View {
 
     private func tileColorBinding(for group: RepositoryGroup) -> Binding<Color> {
         Binding {
-            AppColor.swiftUIColor(hex: group.colorHex ?? GroupTile.defaultColorHex(index: groupIndex))
+            AppColor.swiftUIColor(hex: group.diffColors.badgeBackgroundHex ?? GroupTile.defaultColorHex(index: groupIndex))
         } set: { color in
-            store.updateGroupColor(groupID, colorHex: AppColor.hex(color))
+            updateColors(of: group) { $0.badgeBackgroundHex = AppColor.hex(color) }
         }
     }
 
@@ -220,10 +223,14 @@ struct GroupInspector: View {
         Binding {
             AppColor.swiftUIColor(hex: group.diffColors[keyPath: keyPath])
         } set: { color in
-            var colors = group.diffColors
-            colors[keyPath: keyPath] = AppColor.hex(color)
-            store.updateGroupColors(groupID, diffColors: colors)
+            updateColors(of: group) { $0[keyPath: keyPath] = AppColor.hex(color) }
         }
+    }
+
+    private func updateColors(of group: RepositoryGroup, _ change: (inout DiffColors) -> Void) {
+        var colors = group.diffColors
+        change(&colors)
+        store.updateGroupColors(groupID, diffColors: colors)
     }
 
     private func inclusionBinding(for repository: RepositoryConfig) -> Binding<Bool> {

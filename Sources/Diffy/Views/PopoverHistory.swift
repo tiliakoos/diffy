@@ -108,13 +108,11 @@ struct HistorySection: View {
                 isExpanded: expandedSHA == commit.sha,
                 showsCopied: copiedKey == key,
                 onToggle: {
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        if expandedSHA == commit.sha {
-                            expandedSHA = nil
-                        } else {
-                            expandedSHA = commit.sha
-                            store.loadCommitDetails(repositoryID: repository.id, sha: commit.sha)
-                        }
+                    if expandedSHA == commit.sha {
+                        expandedSHA = nil
+                    } else {
+                        expandedSHA = commit.sha
+                        store.loadCommitDetails(repositoryID: repository.id, sha: commit.sha)
                     }
                 },
                 onCopySHA: { onCopy(commit.sha, key) },
@@ -123,7 +121,6 @@ struct HistorySection: View {
             if expandedSHA == commit.sha {
                 details(for: commit.sha)
                     .padding(.leading, 18)
-                    .transition(.opacity)
             }
         }
     }

@@ -27,14 +27,6 @@ final class BadgeRendererTests: XCTestCase {
     }
 
     @MainActor
-    func testModernBadgeDropsTheSlashSpacing() {
-        let modern = BadgeRenderer.image(added: 1108, removed: 170, colors: .default, interface: .modern)
-        let classic = BadgeRenderer.image(added: 1108, removed: 170, colors: .default, interface: .classic)
-
-        XCTAssertLessThan(modern.size.width, classic.size.width)
-    }
-
-    @MainActor
     func testLabelWidensTheModernBadge() {
         let plain = BadgeRenderer.image(added: 1, removed: 1, colors: .default, interface: .modern)
         let labelled = BadgeRenderer.image(
@@ -46,5 +38,19 @@ final class BadgeRendererTests: XCTestCase {
         )
 
         XCTAssertGreaterThan(labelled.size.width, plain.size.width)
+    }
+
+    @MainActor
+    func testBadgeColorDrawsAPillAroundTheCounts() {
+        let plain = BadgeRenderer.image(added: 1, removed: 1, colors: .default, interface: .modern)
+        let colors = DiffColors(
+            additionHex: DiffColors.default.additionHex,
+            removalHex: DiffColors.default.removalHex,
+            badgeBackgroundHex: "#0433FF"
+        )
+        let pill = BadgeRenderer.image(added: 1, removed: 1, colors: colors, interface: .modern)
+
+        XCTAssertGreaterThan(pill.size.width, plain.size.width)
+        XCTAssertGreaterThan(pill.size.height, plain.size.height)
     }
 }

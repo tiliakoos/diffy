@@ -266,7 +266,7 @@ struct DisclosureRow: View {
                 Text(title)
             }
             .font(.caption)
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(.secondary)
             .frame(height: 24)
             .padding(.horizontal, 8)
             .contentShape(Rectangle())

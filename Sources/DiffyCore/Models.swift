@@ -130,23 +130,19 @@ public struct RepositoryGroup: Identifiable, Codable, Hashable, Sendable {
     public var diffColors: DiffColors
     public var badgeLabel: BadgeLabel?
     public var isHidden: Bool
-    /// Tint for the group's tile in the manager window and popover; nil picks one from a palette.
-    public var colorHex: String?
 
     public init(
         id: UUID = UUID(),
         name: String,
         diffColors: DiffColors = .default,
         badgeLabel: BadgeLabel? = nil,
-        isHidden: Bool = false,
-        colorHex: String? = nil
+        isHidden: Bool = false
     ) {
         self.id = id
         self.name = name
         self.diffColors = diffColors
         self.badgeLabel = badgeLabel
         self.isHidden = isHidden
-        self.colorHex = colorHex
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -155,7 +151,6 @@ public struct RepositoryGroup: Identifiable, Codable, Hashable, Sendable {
         case diffColors
         case badgeLabel
         case isHidden
-        case colorHex
     }
 
     public init(from decoder: Decoder) throws {
@@ -165,7 +160,6 @@ public struct RepositoryGroup: Identifiable, Codable, Hashable, Sendable {
         diffColors = try container.decodeIfPresent(DiffColors.self, forKey: .diffColors) ?? .default
         badgeLabel = try container.decodeIfPresent(BadgeLabel.self, forKey: .badgeLabel)
         isHidden = try container.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
-        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -175,7 +169,6 @@ public struct RepositoryGroup: Identifiable, Codable, Hashable, Sendable {
         try container.encode(diffColors, forKey: .diffColors)
         try container.encodeIfPresent(badgeLabel, forKey: .badgeLabel)
         try container.encode(isHidden, forKey: .isHidden)
-        try container.encodeIfPresent(colorHex, forKey: .colorHex)
     }
 }
 

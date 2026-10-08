@@ -26,9 +26,11 @@ enum BadgeRenderer {
         return (Double(count) / 1000).formatted(.number.precision(.fractionLength(0...1))) + "k"
     }
 
-    /// `+1,108 −170` with a true minus and no slash; the ± mark alone when clean. Colors are
-    /// dynamic system green and red unless the group customized them, and the image is drawn
-    /// through a handler so it re-renders for the menu bar's current appearance.
+    /// `+1,108 / −170` with a true minus; the ± mark alone when clean. Counts are
+    /// dynamic system green and red unless the group customized them. A group with a badge
+    /// color gets it as a pill behind the text, with the ± and label in black or white,
+    /// whichever reads on it. The image is drawn through a handler so it re-renders for the
+    /// menu bar's current appearance.
     private static func modernImage(
         added: Int,
         removed: Int,
@@ -38,14 +40,17 @@ enum BadgeRenderer {
     ) -> NSImage {
         let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium)
         let labelFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
-        let additionColor = colors == .default ? NSColor.systemGreen : AppColor.nsColor(hex: colors.additionHex) ?? .systemGreen
-        let removalColor = colors == .default ? NSColor.systemRed : AppColor.nsColor(hex: colors.removalHex) ?? .systemRed
+        let additionColor = colors.hasSystemDiffColors ? NSColor.systemGreen : AppColor.nsColor(hex: colors.additionHex) ?? .systemGreen
+        let removalColor = colors.hasSystemDiffColors ? NSColor.systemRed : AppColor.nsColor(hex: colors.removalHex) ?? .systemRed
+        let pill = colors.badgeBackgroundHex.flatMap(AppColor.nsColor(hex:))
+        let markColor = pill.map(AppColor.contrastingTextColor(on:)) ?? .labelColor
+        let dimColor = pill == nil ? NSColor.secondaryLabelColor : markColor.withAlphaComponent(0.75)
 
         let text = NSMutableAttributedString()
         let label = badgeLabel?.text.trimmingCharacters(in: .whitespaces) ?? ""
         let labelText = NSAttributedString(
             string: label,
-            attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: labelFont]
+            attributes: [.foregroundColor: dimColor, .font: labelFont]
         )
         let space = NSAttributedString(string: " ", attributes: [.font: font])
 
@@ -55,10 +60,10 @@ enum BadgeRenderer {
         }
 
         if added == 0, removed == 0, !hasError {
-            text.append(symbolAttachment("plusminus", color: .labelColor, font: font))
+            text.append(symbolAttachment("plusminus", color: markColor, font: font))
         } else {
             text.append(NSAttributedString(string: "+\(countText(added))", attributes: [.foregroundColor: additionColor, .font: font]))
-            text.append(space)
+            text.append(NSAttributedString(string: " / ", attributes: [.foregroundColor: dimColor, .font: font]))
             text.append(NSAttributedString(string: "\u{2212}\(countText(removed))", attributes: [.foregroundColor: removalColor, .font: font]))
         }
 
@@ -72,11 +77,21 @@ enum BadgeRenderer {
             text.append(labelText)
         }
 
+        let horizontalPadding: CGFloat = pill == nil ? 1 : 8
+        let verticalPadding: CGFloat = pill == nil ? 0 : 3
         let textSize = text.size()
-        let size = NSSize(width: ceil(textSize.width) + 2, height: max(18, ceil(textSize.height)))
+        let size = NSSize(
+            width: ceil(textSize.width) + horizontalPadding * 2,
+            height: max(18, ceil(textSize.height) + verticalPadding * 2)
+        )
         let drawn = NSAttributedString(attributedString: text)
         let image = NSImage(size: size, flipped: false) { rect in
-            drawn.draw(at: NSPoint(x: 1, y: floor((rect.height - textSize.height) / 2)))
+            if let pill {
+                let capsule = rect.insetBy(dx: 0.5, dy: 1)
+                pill.withAlphaComponent(0.82).setFill()
+                NSBezierPath(roundedRect: capsule, xRadius: capsule.height / 2, yRadius: capsule.height / 2).fill()
+            }
+            drawn.draw(at: NSPoint(x: horizontalPadding, y: floor((rect.height - textSize.height) / 2)))
             return true
         }
         image.isTemplate = false

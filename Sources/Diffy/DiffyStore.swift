@@ -454,13 +454,6 @@ final class DiffyStore: ObservableObject {
         save()
     }
 
-    func updateGroupColor(_ groupID: UUID, colorHex: String?) {
-        guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
-        guard groups[index].colorHex != colorHex else { return }
-        groups[index].colorHex = colorHex
-        save()
-    }
-
     func updateGroupBadgeLabel(_ groupID: UUID, badgeLabel: BadgeLabel?) {
         guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
         guard groups[index].badgeLabel != badgeLabel else { return }

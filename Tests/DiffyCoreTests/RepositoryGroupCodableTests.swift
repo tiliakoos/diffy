@@ -8,8 +8,7 @@ final class RepositoryGroupCodableTests: XCTestCase {
             name: "Frontend",
             diffColors: DiffColors(additionHex: "#11AA44", removalHex: "#DD3355", badgeBackgroundHex: "#223344"),
             badgeLabel: BadgeLabel(text: "fe", position: .leading),
-            isHidden: true,
-            colorHex: "#5B8DEF"
+            isHidden: true
         )
 
         let data = try JSONEncoder().encode(group)
@@ -23,7 +22,6 @@ final class RepositoryGroupCodableTests: XCTestCase {
         XCTAssertEqual(decoded.badgeLabel?.text, "fe")
         XCTAssertEqual(decoded.badgeLabel?.position, .leading)
         XCTAssertTrue(decoded.isHidden)
-        XCTAssertEqual(decoded.colorHex, "#5B8DEF")
     }
 
     func testRoundTripsWithoutBadgeLabel() throws {
@@ -62,6 +60,5 @@ final class RepositoryGroupCodableTests: XCTestCase {
         XCTAssertEqual(group.diffColors.additionHex, DiffColors.default.additionHex)
         XCTAssertNil(group.badgeLabel)
         XCTAssertFalse(group.isHidden)
-        XCTAssertNil(group.colorHex)
     }
 }

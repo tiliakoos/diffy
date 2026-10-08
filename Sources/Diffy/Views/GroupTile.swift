@@ -2,8 +2,8 @@ import DiffyCore
 import SwiftUI
 
 /// The small colored square that identifies a group in the sidebar and popover: its menu-bar
-/// label if it has one, else the first letter of its name. Color comes from the group, else a
-/// palette slot by position so neighbouring groups differ.
+/// label if it has one, else the first letter of its name. Color is the group's badge color,
+/// else a palette slot by position so neighbouring groups differ.
 struct GroupTile: View {
     let group: RepositoryGroup
     let index: Int
@@ -22,7 +22,7 @@ struct GroupTile: View {
             .frame(width: size, height: size)
             .background(
                 RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                    .fill(AppColor.swiftUIColor(hex: group.colorHex ?? Self.defaultColorHex(index: index)))
+                    .fill(AppColor.swiftUIColor(hex: group.diffColors.badgeBackgroundHex ?? Self.defaultColorHex(index: index)))
             )
     }
 

@@ -48,6 +48,7 @@ struct PopoverView: View {
         }
         .padding(.bottom, 6)
         .frame(width: 340)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onExitCommand(perform: onClose)
         .task(id: copiedKey) {
             guard let copiedKey else { return }
@@ -124,14 +125,14 @@ struct PopoverView: View {
                 Spacer(minLength: 8)
                 if totals.added == 0, totals.removed == 0 {
                     Text(repositories.isEmpty ? "" : "No changes")
-                        .font(.system(size: 17, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.tertiary)
                 } else {
                     HStack(spacing: 10) {
                         Text("+\(totals.added.formatted(.number))").foregroundStyle(colors.additionColor)
                         Text("\u{2212}\(totals.removed.formatted(.number))").foregroundStyle(colors.removalColor)
                     }
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .monospacedDigit()
                 }
             }
@@ -143,7 +144,8 @@ struct PopoverView: View {
                         Text("^[\(count) file](inflect: true)")
                     }
                 } else {
-                    Text("^[\(repositories.count) repository](inflect: true)")
+                    let repositoryCount = repositories.filter { $0.parentRepositoryID == nil }.count
+                    Text("^[\(repositoryCount) repository](inflect: true)")
                 }
                 if let lastRefresh {
                     if Date().timeIntervalSince(lastRefresh) < 60 {
@@ -208,7 +210,7 @@ struct PopoverView: View {
             }
         } else {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 6) {
                     switch segment {
                     case .changes: changes
                     case .history: history
@@ -360,12 +362,12 @@ struct PopoverView: View {
                         title: isExpanded ? "Show fewer" : "Show \(files.count - Self.previewFileCount) more files",
                         isExpanded: isExpanded
                     ) {
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            if isExpanded {
-                                expandedRepositoryIDs.remove(repository.id)
-                            } else {
-                                expandedRepositoryIDs.insert(repository.id)
-                            }
+                        // Not animated: the popover resizes to the content's ideal size, and an
+                        // animated layout re-sizes it every frame, which stutters and jumps.
+                        if isExpanded {
+                            expandedRepositoryIDs.remove(repository.id)
+                        } else {
+                            expandedRepositoryIDs.insert(repository.id)
                         }
                     }
                     .padding(.horizontal, 2)
