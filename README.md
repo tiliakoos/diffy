@@ -10,9 +10,9 @@ Diffy is local-only. It does not use GitHub, GitLab, Bitbucket, PRs, issues, clo
 
 ## Status
 
-v0.11.0 — available via Homebrew Cask. The app uses macOS 26 APIs and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
+v0.11.1 — available via Homebrew Cask. The app uses macOS 26 APIs and is ad-hoc signed (not Developer ID signed or notarized). Install instructions below include the required manual Gatekeeper quarantine-clearing step.
 
-This release is the interface refresh: a menu-bar badge that carries each group's colour, a narrower popover built like Apple's own menu extras, and a window with a system sidebar and an inline inspector. The previous interface stays available behind Settings → Interface → Classic while the new one settles. The release also fixes a freeze on repositories with thousands of changed files: the popover now shows file lists a page at a time.
+0.11.0 was the interface refresh: a menu-bar badge that carries each group's colour, a narrower popover built like Apple's own menu extras, and a window with a system sidebar and an inline inspector. The previous interface stays available behind Settings → Interface → Classic while the new one settles. That release also fixed a freeze on repositories with thousands of changed files: the popover now shows file lists a page at a time. 0.11.1 fixes a macOS 27 glitch where a group's badge, after growing from `±` to its counts, could stay in its old, narrower slot and draw over the next group's pill: Diffy now checks each badge a second after it changes and asks the menu bar to lay it out again if it didn't move.
 
 Diffy remains focused on its original local-only, menu-bar-first scope.
 
