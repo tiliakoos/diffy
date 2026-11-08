@@ -36,6 +36,12 @@ final class StatusItemManager: NSObject {
 
         // The badge style follows the interface setting, which the store knows nothing about.
         NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            // AppKit posts defaults changes during status-item teardown; avoid re-entering update.
+            .receive(on: DispatchQueue.main)
+            .map { _ in Interface.current }
+            .prepend(Interface.current)
+            .removeDuplicates()
+            .dropFirst()
             .sink { [weak self] _ in
                 guard let self else { return }
                 self.update(groups: self.store.groups, repositories: self.store.repositories, summaries: self.store.summaries)
