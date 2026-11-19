@@ -302,6 +302,76 @@ final class DiffyStoreBehaviorTests: XCTestCase {
         XCTAssertTrue(store.repositories.allSatisfy { !$0.isAutoManaged })
     }
 
+    func testStopTrackingHidesWorktreeAcrossRefreshesAndRestoreBringsItBack() throws {
+        let (store, repoURL, childURL) = try makeStoreWithDiscoveredWorktreeChild()
+        defer { store.stop() }
+        let parent = try XCTUnwrap(store.repositories.first { !$0.isAutoManaged })
+        let child = try XCTUnwrap(store.repositories.first { $0.isAutoManaged })
+
+        store.dismissWorktree(repositoryID: child.id)
+
+        XCTAssertEqual(store.repositories.map(\.id), [parent.id])
+        let dismissal = try XCTUnwrap(store.repositories.first?.dismissedWorktrees.first)
+        XCTAssertEqual(dismissal.branch, "feature")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: childURL.path), "stop tracking never touches disk")
+
+        // A second worktree proves a reconcile ran, and that it skipped the dismissed one.
+        let otherURL = childURL.deletingLastPathComponent().appendingPathComponent("other")
+        try waitForRepositoryCount(store, count: 2) {
+            try self.runGit(["worktree", "add", "-b", "other", otherURL.path], in: repoURL)
+            store.refresh(repositoryID: parent.id)
+        }
+        let childPath = DiffyCore.canonicalPath(childURL.path)
+        XCTAssertFalse(store.repositories.contains { DiffyCore.canonicalPath($0.path) == childPath })
+
+        try waitForRepositoryCount(store, count: 3) {
+            store.restoreWorktree(dismissal, from: parent.id)
+        }
+        XCTAssertEqual(store.repositories.first { $0.id == parent.id }?.dismissedWorktrees, [])
+    }
+
+    func testTrackSeparatelyMovesWorktreeIntoNewGroupAndKeepsBranchName() throws {
+        let (store, _, _) = try makeStoreWithDiscoveredWorktreeChild()
+        defer { store.stop() }
+        let parent = try XCTUnwrap(store.repositories.first { !$0.isAutoManaged })
+        let child = try XCTUnwrap(store.repositories.first { $0.isAutoManaged })
+
+        store.trackWorktreeSeparately(repositoryID: child.id, destination: .newGroup)
+
+        let tracked = try XCTUnwrap(store.repositories.first { $0.id == child.id })
+        XCTAssertFalse(tracked.isAutoManaged)
+        XCTAssertNil(tracked.parentRepositoryID)
+        XCTAssertEqual(tracked.displayName, "feature")
+        XCTAssertNotEqual(tracked.groupID, parent.groupID)
+        XCTAssertEqual(store.groups.count, 2)
+        XCTAssertEqual(store.groups.first { $0.id == tracked.groupID }?.name, "feature")
+    }
+
+    func testRenameRepositoryTrimsAndIgnoresBlankAndAutoManagedRows() throws {
+        let group = RepositoryGroup(name: "Group")
+        let parent = RepositoryConfig(displayName: "parent", path: "/tmp/parent", groupID: group.id)
+        let child = RepositoryConfig(
+            displayName: "feature",
+            path: "/tmp/child",
+            groupID: group.id,
+            parentRepositoryID: parent.id,
+            isAutoManaged: true
+        )
+        let storageURL = try writeState(groups: [group], repositories: [parent, child])
+        let store = DiffyStore(storageURL: storageURL)
+        store.load()
+
+        store.renameRepository(parent.id, to: "  Renamed  ")
+        store.renameRepository(parent.id, to: "   ")
+        store.renameRepository(child.id, to: "Other")
+
+        XCTAssertEqual(store.repositories.first { $0.id == parent.id }?.displayName, "Renamed")
+        XCTAssertEqual(store.repositories.first { $0.id == child.id }?.displayName, "feature")
+        let reloaded = DiffyStore(storageURL: storageURL)
+        reloaded.load()
+        XCTAssertEqual(reloaded.repositories.first { $0.id == parent.id }?.displayName, "Renamed")
+    }
+
     func testNewerRefreshWinsWhenOlderFinishesLast() throws {
         let repositoryURL = try makeTemporaryDirectory().appendingPathComponent("repository")
         try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)

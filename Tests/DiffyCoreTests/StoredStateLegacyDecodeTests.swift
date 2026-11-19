@@ -50,4 +50,28 @@ final class StoredStateLegacyDecodeTests: XCTestCase {
 
         XCTAssertEqual(decoded.repositories[0].recentCommitLimit, 20)
     }
+
+    func testDismissedWorktreesRoundTripAndDefaultToEmpty() throws {
+        let group = RepositoryGroup(name: "g")
+        let dismissals = [
+            DismissedWorktree(path: "/tmp/wt", branch: "feature"),
+            DismissedWorktree(path: "/tmp/detached", branch: nil)
+        ]
+        let withDismissals = RepositoryConfig(
+            displayName: "repo",
+            path: "/tmp/repo",
+            groupID: group.id,
+            dismissedWorktrees: dismissals
+        )
+        let without = RepositoryConfig(displayName: "other", path: "/tmp/other", groupID: group.id)
+
+        let encoded = try JSONEncoder().encode(StoredState(groups: [group], repositories: [withDismissals, without]))
+        let decoded = try StoredStateMigration.decode(encoded)
+
+        XCTAssertEqual(decoded.repositories[0].dismissedWorktrees, dismissals)
+        XCTAssertEqual(decoded.repositories[1].dismissedWorktrees, [])
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let repositories = try XCTUnwrap(object["repositories"] as? [[String: Any]])
+        XCTAssertNil(repositories[1]["dismissedWorktrees"], "empty list is not written, so older builds see the same file")
+    }
 }

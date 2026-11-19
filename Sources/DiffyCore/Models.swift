@@ -15,6 +15,9 @@ public struct RepositoryConfig: Identifiable, Codable, Hashable, Sendable {
     /// True for rows that Diffy manages itself (auto-discovered worktrees).
     public var isAutoManaged: Bool
     public var recentCommitLimit: Int
+    /// Linked worktrees the user stopped tracking from this repository's family. Only
+    /// meaningful on user-added rows; Diffy skips matching worktrees when auto-discovering.
+    public var dismissedWorktrees: [DismissedWorktree]
 
     public init(
         id: UUID = UUID(),
@@ -25,7 +28,8 @@ public struct RepositoryConfig: Identifiable, Codable, Hashable, Sendable {
         isHidden: Bool = false,
         parentRepositoryID: UUID? = nil,
         isAutoManaged: Bool = false,
-        recentCommitLimit: Int = RepositoryConfig.defaultRecentCommitLimit
+        recentCommitLimit: Int = RepositoryConfig.defaultRecentCommitLimit,
+        dismissedWorktrees: [DismissedWorktree] = []
     ) {
         self.id = id
         self.displayName = displayName
@@ -36,6 +40,7 @@ public struct RepositoryConfig: Identifiable, Codable, Hashable, Sendable {
         self.parentRepositoryID = parentRepositoryID
         self.isAutoManaged = isAutoManaged
         self.recentCommitLimit = Self.clampedRecentCommitLimit(recentCommitLimit)
+        self.dismissedWorktrees = dismissedWorktrees
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -48,6 +53,7 @@ public struct RepositoryConfig: Identifiable, Codable, Hashable, Sendable {
         case parentRepositoryID
         case isAutoManaged
         case recentCommitLimit
+        case dismissedWorktrees
     }
 
     public init(from decoder: Decoder) throws {
@@ -63,6 +69,7 @@ public struct RepositoryConfig: Identifiable, Codable, Hashable, Sendable {
         recentCommitLimit = Self.clampedRecentCommitLimit(
             try container.decodeIfPresent(Int.self, forKey: .recentCommitLimit) ?? Self.defaultRecentCommitLimit
         )
+        dismissedWorktrees = try container.decodeIfPresent([DismissedWorktree].self, forKey: .dismissedWorktrees) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -76,10 +83,37 @@ public struct RepositoryConfig: Identifiable, Codable, Hashable, Sendable {
         try container.encodeIfPresent(parentRepositoryID, forKey: .parentRepositoryID)
         try container.encode(isAutoManaged, forKey: .isAutoManaged)
         try container.encode(recentCommitLimit, forKey: .recentCommitLimit)
+        if !dismissedWorktrees.isEmpty {
+            try container.encode(dismissedWorktrees, forKey: .dismissedWorktrees)
+        }
     }
 
     public static func clampedRecentCommitLimit(_ value: Int) -> Int {
         min(max(value, recentCommitLimitRange.lowerBound), recentCommitLimitRange.upperBound)
+    }
+}
+
+/// A linked worktree the user chose to stop tracking. It stays hidden while its path exists,
+/// unless a different named branch is checked out there, which counts as a new worktree.
+/// A detached HEAD (as during a rebase) keeps it hidden.
+public struct DismissedWorktree: Codable, Hashable, Sendable {
+    public var path: String
+    /// Branch name when dismissed; nil for a detached or unknown HEAD, which hides any branch.
+    public var branch: String?
+
+    public init(path: String, branch: String?) {
+        self.path = path
+        self.branch = branch
+    }
+
+    public init(entry: WorktreeEntry) {
+        self.init(path: entry.path, branch: entry.branch.branchName)
+    }
+
+    public func matches(_ entry: WorktreeEntry) -> Bool {
+        guard canonicalPath(path) == canonicalPath(entry.path) else { return false }
+        guard let branch, let current = entry.branch.branchName else { return true }
+        return branch == current
     }
 }
 
@@ -178,6 +212,12 @@ public enum BranchInfo: Equatable, Sendable {
     case detached(shortSHA: String)
     case bare
     case unknown
+
+    /// The checked-out branch's name, or nil when HEAD is detached, bare or unknown.
+    public var branchName: String? {
+        if case .branch(let name) = self { return name }
+        return nil
+    }
 }
 
 public enum CommitPublicationStatus: Equatable, Sendable {

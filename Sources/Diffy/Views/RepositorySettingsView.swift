@@ -8,6 +8,8 @@ struct RepositorySettingsView: View {
     let onClose: () -> Void
 
     @State private var customCommand = ""
+    @State private var nameDraft = ""
+    @FocusState private var isNameFocused: Bool
     @State private var pendingWorktreeRemoval: UUID?
     @State private var showingRemoveConfirmation = false
     @FocusState private var isCustomCommandFocused: Bool
@@ -64,6 +66,7 @@ struct RepositorySettingsView: View {
                 }
                 .onAppear {
                     store.clearWorktreeRemovalError()
+                    nameDraft = repository.displayName
                     if case .command(let command) = repository.editor {
                         customCommand = command
                     } else {
@@ -72,6 +75,7 @@ struct RepositorySettingsView: View {
                 }
                 .onDisappear {
                     commitCustomCommand(for: repository)
+                    commitName(for: repository)
                 }
             } else {
                 ContentUnavailableView("Repository unavailable", systemImage: "questionmark.folder")
@@ -82,6 +86,17 @@ struct RepositorySettingsView: View {
 
     private func settings(for repository: RepositoryConfig) -> some View {
         Form {
+            if !repository.isAutoManaged {
+                Section {
+                    TextField("Name", text: $nameDraft)
+                        .focused($isNameFocused)
+                        .onSubmit { commitName(for: repository) }
+                        .onChange(of: isNameFocused) { _, focused in
+                            if !focused { commitName(for: repository) }
+                        }
+                }
+            }
+
             Section {
                 Picker("Open in", selection: editorBinding(for: repository)) {
                     ForEach(EditorChoice.allCases, id: \.self) { choice in
@@ -151,8 +166,32 @@ struct RepositorySettingsView: View {
                     .toggleStyle(.switch)
             }
 
+            if !repository.dismissedWorktrees.isEmpty {
+                Section {
+                    ForEach(repository.dismissedWorktrees, id: \.self) { dismissal in
+                        LabeledContent {
+                            Button("Show") {
+                                store.restoreWorktree(dismissal, from: repository.id)
+                            }
+                        } label: {
+                            Text(dismissal.branch ?? URL(fileURLWithPath: dismissal.path).lastPathComponent)
+                            Text((dismissal.path as NSString).abbreviatingWithTildeInPath)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                } header: {
+                    Text("Hidden worktrees")
+                } footer: {
+                    Text("Worktrees you stopped tracking. Diffy shows one again if a different branch is checked out there.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
             Section {
                 if repository.isAutoManaged {
+                    trackingControls(for: repository)
                     worktreeRemovalControls(for: repository)
                 } else {
                     Button("Remove Repository", role: .destructive) {
@@ -188,6 +227,35 @@ struct RepositorySettingsView: View {
         } set: { newValue in
             if !newValue { pendingWorktreeRemoval = nil }
         }
+    }
+
+    private func trackingControls(for repository: RepositoryConfig) -> some View {
+        HStack(spacing: 8) {
+            Menu("Track Separately") {
+                ForEach(store.groups) { group in
+                    Button(group.name.isEmpty ? "Unnamed group" : group.name) {
+                        store.trackWorktreeSeparately(repositoryID: repository.id, destination: .existingGroup(group.id))
+                    }
+                }
+                Divider()
+                Button("New Group") {
+                    store.trackWorktreeSeparately(repositoryID: repository.id, destination: .newGroup)
+                }
+            }
+            .fixedSize()
+            .help("List this worktree as its own repository, in any group")
+
+            Button("Stop Tracking") {
+                store.dismissWorktree(repositoryID: repository.id)
+                onClose()
+            }
+            .help("Stop showing this worktree in Diffy. Nothing on disk changes.")
+        }
+    }
+
+    private func commitName(for repository: RepositoryConfig) {
+        guard !repository.isAutoManaged else { return }
+        store.renameRepository(repository.id, to: nameDraft)
     }
 
     private func worktreeRemovalControls(for repository: RepositoryConfig) -> some View {

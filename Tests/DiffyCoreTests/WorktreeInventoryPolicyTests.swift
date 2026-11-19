@@ -73,6 +73,106 @@ final class WorktreeInventoryPolicyTests: XCTestCase {
         XCTAssertEqual(ids, [second.id])
     }
 
+    func testMainWorktreeRowOwnsTheFamilyEvenWhenAddedLater() {
+        let groupID = UUID()
+        let feat = repo("feat", path: "/tmp/ablafemx-feat", groupID: groupID)
+        let main = repo("ablafemx", path: "/tmp/ablafemx", groupID: groupID)
+        let repositories = [feat, main]
+        let entries = [
+            entry("/tmp/ablafemx", branch: "deployment-branch"),
+            entry("/tmp/ablafemx-feat", branch: "test-prune"),
+            entry("/tmp/t3/dolfinx", branch: "upgrade/dolfinx-port")
+        ]
+
+        XCTAssertEqual(WorktreeInventoryPolicy.familyOwnerID(repositories: repositories, entries: entries), main.id)
+        XCTAssertEqual(
+            WorktreeInventoryPolicy.desiredAutoManagedChildren(parent: main, repositories: repositories, entries: entries).map(\.canonicalPath),
+            ["/tmp/t3/dolfinx"]
+        )
+        XCTAssertTrue(WorktreeInventoryPolicy.desiredAutoManagedChildren(parent: feat, repositories: repositories, entries: entries).isEmpty)
+    }
+
+    func testFirstAddedRowOwnsTheFamilyWhenMainWorktreeIsNotAdded() {
+        let groupID = UUID()
+        let free = repo("free", path: "/tmp/ablafemx-free", groupID: groupID)
+        let feat = repo("feat", path: "/tmp/ablafemx-feat", groupID: groupID)
+        let entries = [
+            entry("/tmp/ablafemx", branch: "deployment-branch"),
+            entry("/tmp/ablafemx-feat", branch: "test-prune"),
+            entry("/tmp/ablafemx-free", branch: "free-version")
+        ]
+
+        XCTAssertEqual(WorktreeInventoryPolicy.familyOwnerID(repositories: [free, feat], entries: entries), free.id)
+    }
+
+    func testDismissedWorktreeIsNotRediscovered() {
+        let groupID = UUID()
+        var main = repo("main", path: "/tmp/repo", groupID: groupID)
+        main.dismissedWorktrees = [DismissedWorktree(path: "/tmp/wt", branch: "feature")]
+        let entries = [
+            entry("/tmp/repo", branch: "main"),
+            entry("/tmp/wt", branch: "feature"),
+            entry("/tmp/other", branch: "other")
+        ]
+
+        let desired = WorktreeInventoryPolicy.desiredAutoManagedChildren(parent: main, repositories: [main], entries: entries)
+
+        XCTAssertEqual(desired.map(\.canonicalPath), ["/tmp/other"])
+        XCTAssertTrue(WorktreeInventoryPolicy.staleDismissals(of: main, entries: entries).isEmpty)
+    }
+
+    func testDismissalOnAnyFamilyRowApplies() {
+        let groupID = UUID()
+        let main = repo("main", path: "/tmp/repo", groupID: groupID)
+        var feat = repo("feat", path: "/tmp/repo-feat", groupID: groupID)
+        feat.dismissedWorktrees = [DismissedWorktree(path: "/tmp/wt", branch: "feature")]
+        let entries = [
+            entry("/tmp/repo", branch: "main"),
+            entry("/tmp/repo-feat", branch: "feat"),
+            entry("/tmp/wt", branch: "feature")
+        ]
+
+        XCTAssertTrue(WorktreeInventoryPolicy.desiredAutoManagedChildren(parent: main, repositories: [main, feat], entries: entries).isEmpty)
+    }
+
+    func testDismissalLapsesWhenAnotherBranchIsCheckedOutThere() {
+        let groupID = UUID()
+        var main = repo("main", path: "/tmp/repo", groupID: groupID)
+        main.dismissedWorktrees = [DismissedWorktree(path: "/tmp/wt", branch: "feature")]
+        let entries = [
+            entry("/tmp/repo", branch: "main"),
+            entry("/tmp/wt", branch: "next")
+        ]
+
+        let desired = WorktreeInventoryPolicy.desiredAutoManagedChildren(parent: main, repositories: [main], entries: entries)
+
+        XCTAssertEqual(desired.map(\.canonicalPath), ["/tmp/wt"])
+        XCTAssertEqual(WorktreeInventoryPolicy.staleDismissals(of: main, entries: entries), main.dismissedWorktrees)
+    }
+
+    func testDismissalHoldsThroughDetachedHead() {
+        let groupID = UUID()
+        var main = repo("main", path: "/tmp/repo", groupID: groupID)
+        main.dismissedWorktrees = [DismissedWorktree(path: "/tmp/wt", branch: "feature")]
+        let entries = [
+            entry("/tmp/repo", branch: "main"),
+            WorktreeEntry(path: "/tmp/wt", branch: .detached(shortSHA: "abc1234"))
+        ]
+
+        XCTAssertTrue(WorktreeInventoryPolicy.desiredAutoManagedChildren(parent: main, repositories: [main], entries: entries).isEmpty)
+        XCTAssertTrue(WorktreeInventoryPolicy.staleDismissals(of: main, entries: entries).isEmpty)
+    }
+
+    func testDismissalOfRemovedWorktreeIsStale() {
+        let groupID = UUID()
+        var main = repo("main", path: "/tmp/repo", groupID: groupID)
+        main.dismissedWorktrees = [DismissedWorktree(path: "/tmp/wt", branch: nil)]
+
+        let stale = WorktreeInventoryPolicy.staleDismissals(of: main, entries: [entry("/tmp/repo", branch: "main")])
+
+        XCTAssertEqual(stale, main.dismissedWorktrees)
+    }
+
     private func repo(
         _ name: String,
         path: String,

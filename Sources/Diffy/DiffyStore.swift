@@ -171,7 +171,7 @@ final class DiffyStore: ObservableObject {
                 promoteAutoManagedRepository(
                     existing,
                     toPath: url.path,
-                    displayName: url.lastPathComponent,
+                    displayName: existing.displayName,
                     groupID: groupID
                 )
             } else {
@@ -247,6 +247,64 @@ final class DiffyStore: ObservableObject {
 
     func clearAddError() {
         lastAddError = nil
+    }
+
+    /// Turn an auto-discovered worktree into a row the user owns, keeping its name (the branch).
+    func trackWorktreeSeparately(repositoryID: UUID, destination: RepositoryDestination) {
+        guard let repository = repositories.first(where: { $0.id == repositoryID }),
+              repository.isAutoManaged,
+              let groupID = destinationGroupID(for: destination, name: repository.displayName)
+        else { return }
+        promoteAutoManagedRepository(
+            repository,
+            toPath: repository.path,
+            displayName: repository.displayName,
+            groupID: groupID
+        )
+    }
+
+    /// Stop showing an auto-discovered worktree without touching it on disk. The dismissal is
+    /// stored on the row that listed it, so later refreshes don't rediscover it.
+    func dismissWorktree(repositoryID: UUID) {
+        guard let child = repositories.first(where: { $0.id == repositoryID }),
+              child.isAutoManaged,
+              let parentID = child.parentRepositoryID,
+              let parentIndex = repositories.firstIndex(where: { $0.id == parentID })
+        else { return }
+
+        let childPath = canonicalPath(child.path)
+        let entry = lastWorktreeEntries[parentID]?.first { canonicalPath($0.path) == childPath }
+        let branch = entry?.branch ?? summaries[repositoryID]?.branch
+        let dismissal = DismissedWorktree(path: child.path, branch: branch?.branchName)
+
+        if !repositories[parentIndex].dismissedWorktrees.contains(dismissal) {
+            repositories[parentIndex].dismissedWorktrees.append(dismissal)
+        }
+        tearDownRow(id: repositoryID)
+        save()
+    }
+
+    /// Show a dismissed worktree again; the next refresh of its family rediscovers it.
+    func restoreWorktree(_ dismissal: DismissedWorktree, from repositoryID: UUID) {
+        guard let index = repositories.firstIndex(where: { $0.id == repositoryID }),
+              repositories[index].dismissedWorktrees.contains(dismissal)
+        else { return }
+        repositories[index].dismissedWorktrees.removeAll { $0 == dismissal }
+        save()
+        refresh(repositoryID: repositoryID)
+    }
+
+    /// Rename a user-added row. Auto-discovered rows are always named after their branch.
+    func renameRepository(_ repositoryID: UUID, to newName: String) {
+        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty,
+              let index = repositories.firstIndex(where: { $0.id == repositoryID }),
+              !repositories[index].isAutoManaged,
+              repositories[index].displayName != name
+        else { return }
+        repositories[index].displayName = name
+        updateSummaryRepository(repositories[index])
+        save()
     }
 
     func removeRepository(_ repository: RepositoryConfig) {
@@ -601,7 +659,7 @@ final class DiffyStore: ObservableObject {
         default:
             preservationMessage = "Create a branch first if the checked-out commit must be kept."
         }
-        return "This deletes the directory at \(child.path) and removes it from \(parentName). \(preservationMessage)"
+        return "This deletes the directory at \(child.path) and removes it from \(parentName). Ignored files in it, such as .env files or build output, are deleted too. \(preservationMessage)"
     }
 
     func removeWorktree(repositoryID: UUID) {
@@ -735,6 +793,12 @@ final class DiffyStore: ObservableObject {
         let currentCanonicalSet = Set(currentByCanonical.keys)
 
         var mutated = false
+
+        let stale = WorktreeInventoryPolicy.staleDismissals(of: parent, entries: entries)
+        if !stale.isEmpty, let parentIndex = repositories.firstIndex(where: { $0.id == parentID }) {
+            repositories[parentIndex].dismissedWorktrees.removeAll { stale.contains($0) }
+            mutated = true
+        }
 
         for id in duplicateChildIDs {
             tearDownRow(id: id)

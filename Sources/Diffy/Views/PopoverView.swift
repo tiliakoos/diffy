@@ -437,6 +437,16 @@ struct PopoverView: View {
         Array(files.sorted { $0.addedLines + $0.removedLines > $1.addedLines + $1.removedLines }.prefix(Self.previewFileCount))
     }
 
+    /// A new group rebuilds every status item, including the one hosting this popover, and
+    /// `StatusItemManager` updates synchronously. Close first and move on the next main-queue
+    /// turn so the teardown never runs inside this view's own button action.
+    private func trackSeparately(_ repositoryID: UUID, destination: RepositoryDestination) {
+        onClose()
+        DispatchQueue.main.async { [store] in
+            store.trackWorktreeSeparately(repositoryID: repositoryID, destination: destination)
+        }
+    }
+
     private func repositoryMenu(_ repository: RepositoryConfig, branch: BranchInfo?) -> some View {
         Menu {
             Button("Reveal in Finder") { reveal(URL(fileURLWithPath: repository.path)) }
@@ -445,10 +455,26 @@ struct PopoverView: View {
             if case .branch(let name)? = branch {
                 Button("Copy Branch Name") { copySilent(name) }
             }
-            if repository.isAutoManaged, !store.isGitMainWorktree(repositoryID: repository.id) {
+            if repository.isAutoManaged {
                 Divider()
-                Button("Remove Worktree…", role: .destructive) {
-                    pendingWorktreeRemoval = repository.id
+                Menu("Track Separately") {
+                    ForEach(store.groups) { group in
+                        Button(group.name.isEmpty ? "Unnamed group" : group.name) {
+                            trackSeparately(repository.id, destination: .existingGroup(group.id))
+                        }
+                    }
+                    Divider()
+                    Button("New Group") {
+                        trackSeparately(repository.id, destination: .newGroup)
+                    }
+                }
+                Button("Stop Tracking") {
+                    store.dismissWorktree(repositoryID: repository.id)
+                }
+                if !store.isGitMainWorktree(repositoryID: repository.id) {
+                    Button("Remove Worktree…", role: .destructive) {
+                        pendingWorktreeRemoval = repository.id
+                    }
                 }
             }
         } label: {
