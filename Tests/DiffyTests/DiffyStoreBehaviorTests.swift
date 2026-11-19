@@ -372,6 +372,37 @@ final class DiffyStoreBehaviorTests: XCTestCase {
         XCTAssertEqual(reloaded.repositories.first { $0.id == parent.id }?.displayName, "Renamed")
     }
 
+    func testReorderingKeepsChildrenUnderTheirParentAndPersists() throws {
+        let group = RepositoryGroup(name: "Group")
+        let a = RepositoryConfig(displayName: "a", path: "/tmp/a", groupID: group.id)
+        let b = RepositoryConfig(displayName: "b", path: "/tmp/b", groupID: group.id, isHidden: true)
+        let c = RepositoryConfig(displayName: "c", path: "/tmp/c", groupID: group.id)
+        let a1 = RepositoryConfig(
+            displayName: "a1",
+            path: "/tmp/a1",
+            groupID: group.id,
+            parentRepositoryID: a.id,
+            isAutoManaged: true
+        )
+        let storageURL = try writeState(groups: [group], repositories: [a, b, c, a1])
+        let store = DiffyStore(storageURL: storageURL)
+        store.load()
+
+        store.reorderSiblings([c.id, a.id, b.id])
+        XCTAssertEqual(store.orderedRepositories(in: group.id, includeHidden: true).map(\.displayName), ["c", "a", "a1", "b"])
+
+        // The popover lists only counted rows: moving `c` down one place passes `a`, not hidden `b`.
+        store.moveRepository(c.id, by: 1, includeHidden: false)
+        XCTAssertEqual(store.orderedRepositories(in: group.id, includeHidden: true).map(\.displayName), ["a", "a1", "c", "b"])
+
+        store.reorderSiblings([a1.id, c.id])
+        XCTAssertEqual(store.orderedRepositories(in: group.id, includeHidden: true).map(\.displayName), ["a", "a1", "c", "b"], "a child can't join the top level")
+
+        let reloaded = DiffyStore(storageURL: storageURL)
+        reloaded.load()
+        XCTAssertEqual(reloaded.orderedRepositories(in: group.id, includeHidden: true).map(\.displayName), ["a", "a1", "c", "b"])
+    }
+
     func testNewerRefreshWinsWhenOlderFinishesLast() throws {
         let repositoryURL = try makeTemporaryDirectory().appendingPathComponent("repository")
         try FileManager.default.createDirectory(at: repositoryURL, withIntermediateDirectories: true)

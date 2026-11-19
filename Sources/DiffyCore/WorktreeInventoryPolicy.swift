@@ -11,16 +11,19 @@ public struct WorktreeChildCandidate: Equatable, Sendable {
 }
 
 public enum WorktreeInventoryPolicy {
-    /// The user-added row that lists a repository's unadded worktrees under itself: the row
-    /// for git's main worktree (the first porcelain entry) when the user added it, otherwise
-    /// the first user-added row in the family.
+    /// The user-added row that lists a repository's unadded worktrees under itself: of the
+    /// family's user-added rows, the one git lists first. That is the main worktree when the
+    /// user added it. Git's order, not the display order, so reordering rows never moves
+    /// worktrees to a different parent.
     public static func familyOwnerID(repositories: [RepositoryConfig], entries: [WorktreeEntry]) -> UUID? {
         let members = familyMembers(repositories: repositories, entries: entries)
-        if let mainPath = entries.first.map({ canonicalPath($0.path) }),
-           let main = members.first(where: { canonicalPath($0.path) == mainPath }) {
-            return main.id
+        for entry in entries {
+            let path = canonicalPath(entry.path)
+            if let owner = members.first(where: { canonicalPath($0.path) == path }) {
+                return owner.id
+            }
         }
-        return members.first?.id
+        return nil
     }
 
     public static func desiredAutoManagedChildren(

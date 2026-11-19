@@ -92,7 +92,7 @@ final class WorktreeInventoryPolicyTests: XCTestCase {
         XCTAssertTrue(WorktreeInventoryPolicy.desiredAutoManagedChildren(parent: feat, repositories: repositories, entries: entries).isEmpty)
     }
 
-    func testFirstAddedRowOwnsTheFamilyWhenMainWorktreeIsNotAdded() {
+    func testRowGitListsFirstOwnsTheFamilyWhenMainWorktreeIsNotAdded() {
         let groupID = UUID()
         let free = repo("free", path: "/tmp/ablafemx-free", groupID: groupID)
         let feat = repo("feat", path: "/tmp/ablafemx-feat", groupID: groupID)
@@ -102,7 +102,8 @@ final class WorktreeInventoryPolicyTests: XCTestCase {
             entry("/tmp/ablafemx-free", branch: "free-version")
         ]
 
-        XCTAssertEqual(WorktreeInventoryPolicy.familyOwnerID(repositories: [free, feat], entries: entries), free.id)
+        XCTAssertEqual(WorktreeInventoryPolicy.familyOwnerID(repositories: [free, feat], entries: entries), feat.id)
+        XCTAssertEqual(WorktreeInventoryPolicy.familyOwnerID(repositories: [feat, free], entries: entries), feat.id, "display order doesn't matter")
     }
 
     func testDismissedWorktreeIsNotRediscovered() {

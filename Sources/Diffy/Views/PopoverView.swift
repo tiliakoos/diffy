@@ -20,6 +20,21 @@ struct PopoverView: View {
     @State private var copiedKey: String?
     @State private var pendingWorktreeRemoval: UUID?
 
+    // Drag to reorder (see `PlatterReorder`).
+    @State private var reorder: PlatterReorder?
+    @State private var reorderCancelled = false
+    @State private var platterFrames: [UUID: CGRect] = [:]
+    @State private var hoveredPlatter: UUID?
+    @State private var scrollMetrics = ScrollMetrics()
+    @State private var scrollPosition = ScrollPosition()
+    @State private var autoScroll = 0
+
+    private static let platterSpacing: CGFloat = 6
+    private static let plattersSpace = "popoverPlatters"
+    private static let viewportSpace = "popoverViewport"
+    /// How close to the top or bottom edge a drag starts scrolling the list.
+    private static let autoScrollEdge: CGFloat = 28
+
     private static let previewFileCount = 4
     /// Rows added per "Show more". Every row on screen is laid out at once on the main thread
     /// when the popover opens or resizes, so this cap is what keeps a change with thousands of
@@ -53,7 +68,13 @@ struct PopoverView: View {
         .padding(.bottom, 6)
         .frame(width: 340)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onExitCommand(perform: onClose)
+        .onExitCommand {
+            if reorder != nil {
+                cancelReorder()
+            } else {
+                onClose()
+            }
+        }
         .task(id: copiedKey) {
             guard let copiedKey else { return }
             try? await Task.sleep(for: .seconds(1.5))
@@ -214,16 +235,31 @@ struct PopoverView: View {
             }
         } else {
             ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Self.platterSpacing) {
                     switch segment {
                     case .changes: changes
                     case .history: history
                     }
                 }
+                .coordinateSpace(.named(Self.plattersSpace))
                 .padding(.vertical, 4)
             }
+            .scrollPosition($scrollPosition)
+            .onScrollGeometryChange(for: ScrollMetrics.self) { geometry in
+                ScrollMetrics(
+                    offset: geometry.contentOffset.y,
+                    viewport: geometry.containerSize.height,
+                    content: geometry.contentSize.height
+                )
+            } action: { _, metrics in
+                scrollMetrics = metrics
+            }
+            .coordinateSpace(.named(Self.viewportSpace))
             .frame(maxHeight: 520)
             .fixedSize(horizontal: false, vertical: true)
+            .task(id: autoScroll) {
+                await runAutoScroll()
+            }
         }
     }
 
@@ -246,9 +282,7 @@ struct PopoverView: View {
             }
         } else {
             ForEach(repositories) { repository in
-                Platter(indented: repository.parentRepositoryID != nil) {
-                    repositoryPlatter(repository)
-                }
+                reorderablePlatter(repository)
             }
         }
     }
@@ -360,6 +394,13 @@ struct PopoverView: View {
                         .lineLimit(1)
                         .help(repository.displayName)
                     Spacer(minLength: 8)
+                    if canReorder(repository) {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .opacity(hoveredPlatter == repository.id || reorder?.id == repository.id ? 1 : 0)
+                            .accessibilityHidden(true)
+                    }
                     repositoryMenu(repository, branch: summary?.branch)
                         .padding(.vertical, -4) // keeps the 22 pt hit area without growing the line
                 }
@@ -402,6 +443,18 @@ struct PopoverView: View {
                 }
             }
             .padding(.horizontal, 10)
+            .modifier(ReorderHandle(
+                isEnabled: canReorder(repository),
+                isDragging: reorder?.id == repository.id,
+                gesture: reorderGesture(for: repository.id),
+                onHover: { hovering in
+                    if hovering {
+                        hoveredPlatter = repository.id
+                    } else if hoveredPlatter == repository.id {
+                        hoveredPlatter = nil
+                    }
+                }
+            ))
 
             if let error = summary?.errorMessage {
                 repositoryError(error).padding(.horizontal, 2)
@@ -430,6 +483,121 @@ struct PopoverView: View {
                     .padding(.horizontal, 10)
                     .padding(.top, 4)
             }
+        }
+    }
+
+    // MARK: - Reordering
+
+    /// A platter that can be dragged among its siblings. Rows only move by offset while dragging;
+    /// the store's order changes once, on drop.
+    private func reorderablePlatter(_ repository: RepositoryConfig) -> some View {
+        let id = repository.id
+        let isMoving = reorder?.isMoving(id) == true
+        let offset = reorder?.offset(for: id, scrollOffset: scrollMetrics.offset) ?? 0
+        let tracksPointer = isMoving && reorder?.settledTranslation == nil
+        return Platter(indented: repository.parentRepositoryID != nil, lifted: isMoving) {
+            repositoryPlatter(repository)
+        }
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .named(Self.plattersSpace))
+        } action: { frame in
+            // Frames are snapshotted when a drag starts; offsets mustn't feed back into them.
+            if reorder == nil {
+                platterFrames[id] = frame
+            }
+        }
+        .offset(y: offset)
+        .animation(tracksPointer ? nil : .snappy(duration: 0.2), value: offset)
+        .zIndex(isMoving ? 1 : 0)
+        .accessibilityAction(named: "Move Up") {
+            store.moveRepository(id, by: -1, includeHidden: false)
+        }
+        .accessibilityAction(named: "Move Down") {
+            store.moveRepository(id, by: 1, includeHidden: false)
+        }
+    }
+
+    private func canReorder(_ repository: RepositoryConfig) -> Bool {
+        singleRepository == nil
+            && repositories.filter { $0.parentRepositoryID == repository.parentRepositoryID }.count > 1
+    }
+
+    private func reorderGesture(for id: UUID) -> some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named(Self.viewportSpace))
+            .onChanged { value in
+                guard !reorderCancelled else { return }
+                if reorder == nil {
+                    reorder = PlatterReorder(
+                        id: id,
+                        rows: repositories,
+                        frames: platterFrames,
+                        spacing: Self.platterSpacing,
+                        scrollOffset: scrollMetrics.offset
+                    )
+                }
+                guard reorder != nil else { return }
+                reorder?.pointerTranslation = value.translation.height
+                let y = value.location.y
+                autoScroll = y < Self.autoScrollEdge ? -1 : (y > scrollMetrics.viewport - Self.autoScrollEdge ? 1 : 0)
+            }
+            .onEnded { _ in
+                autoScroll = 0
+                if reorderCancelled {
+                    reorderCancelled = false
+                } else {
+                    finishReorder()
+                }
+            }
+    }
+
+    /// Glide the grabbed rows into their slot, then commit the order with no animation, so
+    /// the rows already drawn in their new places don't move again.
+    private func finishReorder() {
+        guard var drag = reorder else { return }
+        let target = drag.targetIndex(scrollOffset: scrollMetrics.offset)
+        let order = target == drag.originalIndex ? nil : drag.order(droppingAt: target)
+        drag.settledTranslation = drag.restingTranslation(for: target)
+        withAnimation(.snappy(duration: 0.18)) {
+            reorder = drag
+        } completion: {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                if let order {
+                    store.reorderSiblings(order)
+                }
+                reorder = nil
+            }
+        }
+    }
+
+    /// Esc while dragging: everything slides home and the order doesn't change.
+    private func cancelReorder() {
+        guard var drag = reorder else { return }
+        reorderCancelled = true
+        autoScroll = 0
+        drag.settledTranslation = 0
+        withAnimation(.snappy(duration: 0.18)) {
+            reorder = drag
+        } completion: {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                reorder = nil
+            }
+        }
+    }
+
+    /// While a drag holds the pointer near the top or bottom edge, scroll that way.
+    private func runAutoScroll() async {
+        guard autoScroll != 0 else { return }
+        while !Task.isCancelled, reorder != nil {
+            let maxOffset = max(scrollMetrics.content - scrollMetrics.viewport, 0)
+            let next = min(max(scrollMetrics.offset + CGFloat(autoScroll) * 6, 0), maxOffset)
+            if next != scrollMetrics.offset {
+                scrollPosition.scrollTo(y: next)
+            }
+            try? await Task.sleep(for: .milliseconds(16))
         }
     }
 

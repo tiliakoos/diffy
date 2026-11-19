@@ -107,8 +107,23 @@ struct GroupInspector: View {
                                 summary: store.summaries[repository.id],
                                 colors: group.diffColors,
                                 isIncluded: inclusionBinding(for: repository),
-                                onSettings: { onRepositorySettings(repository.id) }
+                                onSettings: { onRepositorySettings(repository.id) },
+                                onMove: { offset in
+                                    store.moveRepository(repository.id, by: offset, includeHidden: true)
+                                }
                             )
+                        }
+                        .onMove { offsets, destination in
+                            // A drop that would split a worktree from its parent snaps to the
+                            // nearest allowed place (see `RepositoryOrdering`).
+                            guard let source = offsets.first,
+                                  let order = RepositoryOrdering.siblingOrder(
+                                      moving: repositories[source].id,
+                                      toFlatIndex: destination,
+                                      in: repositories
+                                  )
+                            else { return }
+                            store.reorderSiblings(order)
                         }
                     }
                 } header: {
@@ -248,6 +263,7 @@ private struct RepositoryRow: View {
     let colors: DiffColors
     @Binding var isIncluded: Bool
     let onSettings: () -> Void
+    let onMove: (Int) -> Void
 
     private static let folderIcon: NSImage = {
         let icon = NSWorkspace.shared.icon(for: .folder)
@@ -292,7 +308,12 @@ private struct RepositoryRow: View {
                 NSPasteboard.general.setString(repository.path, forType: .string)
             }
             Toggle("Count in totals", isOn: $isIncluded)
+            Divider()
+            Button("Move Up") { onMove(-1) }
+            Button("Move Down") { onMove(1) }
         }
+        .accessibilityAction(named: "Move Up") { onMove(-1) }
+        .accessibilityAction(named: "Move Down") { onMove(1) }
     }
 
     @ViewBuilder

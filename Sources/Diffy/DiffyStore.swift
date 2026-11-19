@@ -600,17 +600,12 @@ final class DiffyStore: ObservableObject {
     /// When false, hidden rows are filtered out.
     func orderedRepositories(in groupID: UUID, includeHidden: Bool) -> [RepositoryConfig] {
         let inGroup = repositories.filter { $0.groupID == groupID }
+        // The user's order: rows not counted in totals stay where they were put, dimmed.
         let parents = inGroup.filter { $0.parentRepositoryID == nil }
-        let orderedParents: [RepositoryConfig]
-        if includeHidden {
-            orderedParents = parents.filter { !$0.isHidden } + parents.filter { $0.isHidden }
-        } else {
-            orderedParents = parents
-        }
 
         var result: [RepositoryConfig] = []
         result.reserveCapacity(inGroup.count)
-        for parent in orderedParents {
+        for parent in parents {
             // A hidden parent's children must not render as orphaned, indented rows.
             guard includeHidden || !parent.isHidden else { continue }
             result.append(parent)
@@ -618,6 +613,28 @@ final class DiffyStore: ObservableObject {
             result.append(contentsOf: includeHidden ? children : children.filter { !$0.isHidden })
         }
         return result
+    }
+
+    /// Apply a new display order to one set of siblings (see `RepositoryOrdering`).
+    func reorderSiblings(_ orderedIDs: [UUID]) {
+        guard let reordered = RepositoryOrdering.reorder(repositories, siblings: orderedIDs),
+              reordered != repositories
+        else { return }
+        repositories = reordered
+        save()
+    }
+
+    /// Move a row `offset` places among its siblings as one view lists them: the popover shows
+    /// only rows counted in totals, the main window shows all of them.
+    func moveRepository(_ repositoryID: UUID, by offset: Int, includeHidden: Bool) {
+        guard let groupID = repositories.first(where: { $0.id == repositoryID })?.groupID,
+              let order = RepositoryOrdering.siblingOrder(
+                  moving: repositoryID,
+                  by: offset,
+                  in: orderedRepositories(in: groupID, includeHidden: includeHidden)
+              )
+        else { return }
+        reorderSiblings(order)
     }
 
     /// Sums added/removed lines across a group's non-hidden repositories.

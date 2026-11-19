@@ -4,15 +4,21 @@ import SwiftUI
 /// Rounded platter behind one repository when a popover shows several.
 struct Platter<Content: View>: View {
     var indented = false
+    /// Being dragged: opaque so the platters sliding beneath don't show through, with a shadow.
+    var lifted = false
     @ViewBuilder let content: Content
 
     var body: some View {
         content
             .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.primary.opacity(0.045))
-            )
+            .background {
+                let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+                ZStack {
+                    shape.fill(Color(nsColor: .windowBackgroundColor)).opacity(lifted ? 1 : 0)
+                    shape.fill(Color.primary.opacity(lifted ? 0.07 : 0.045))
+                }
+                .shadow(color: .black.opacity(lifted ? 0.22 : 0), radius: lifted ? 10 : 0, y: lifted ? 4 : 0)
+            }
             .padding(.leading, indented ? 24 : 8)
             .padding(.trailing, 8)
     }
