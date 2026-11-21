@@ -297,6 +297,9 @@ final class StatusItemManager: NSObject {
         let menu = NSMenu()
         let open = menu.addItem(withTitle: "Open Diffy", action: #selector(menuOpen), keyEquivalent: "o")
         open.target = self
+        let add = menu.addItem(withTitle: "Add Repository…", action: #selector(menuAddRepository(_:)), keyEquivalent: "")
+        add.target = self
+        add.representedObject = groupID
         let settings = menu.addItem(withTitle: "Settings…", action: #selector(menuSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(NSMenuItem.separator())
@@ -318,6 +321,15 @@ final class StatusItemManager: NSObject {
 
     @objc private func menuOpen() {
         onOpenWindow()
+    }
+
+    /// The popover's footer is just "Open Diffy" now; adding a repository lives here.
+    @objc private func menuAddRepository(_ sender: NSMenuItem) {
+        let groupID = sender.representedObject as? UUID
+        NSApp.activate()
+        RepositoryPicker.chooseRepository(groups: store.groups, preselectedGroupID: groupID) { [store] url, destination in
+            store.addRepository(path: url.path, destination: destination)
+        }
     }
 
     @objc private func menuHide(_ sender: NSMenuItem) {
